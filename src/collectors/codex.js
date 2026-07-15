@@ -23,7 +23,9 @@ function collect() {
     let currentModel = null;
 
     for (const line of lines) {
-      const payload = line.type === 'event_msg' ? line.payload : line;
+      // Both event_msg (token_count) and turn_context lines carry their data in
+      // `.payload`; the model lives at payload.model on turn_context lines.
+      const payload = line.payload || line;
       if (!payload || typeof payload !== 'object') continue;
 
       if (typeof payload.model === 'string' && payload.model) {
@@ -42,14 +44,20 @@ function collect() {
         timestamp = new Date(`${dateFromPath}T00:00:00Z`).toISOString();
       }
 
+      // Codex `input_tokens` includes the cached portion; store only the
+      // non-cached input so cost isn't double-counted (cached is priced
+      // separately as cache_read). Total stays untouched.
+      const cachedIn = safeInt(usage.cached_input_tokens);
+      const nonCachedIn = Math.max(0, safeInt(usage.input_tokens) - cachedIn);
+
       records.push({
         agent: 'codex',
         session_id: sessionId,
         timestamp,
         model: payload.info?.model || currentModel || null,
-        input_tokens: safeInt(usage.input_tokens),
+        input_tokens: nonCachedIn,
         output_tokens: safeInt(usage.output_tokens),
-        cache_read_tokens: safeInt(usage.cached_input_tokens),
+        cache_read_tokens: cachedIn,
         cache_creation_tokens: 0,
         reasoning_tokens: safeInt(usage.reasoning_output_tokens),
         total_tokens: safeInt(usage.total_tokens),

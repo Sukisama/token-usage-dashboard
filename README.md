@@ -6,12 +6,27 @@ A local dashboard that aggregates LLM token usage across multiple AI coding agen
 
 ## Features
 
-- 🔌 Auto-collect token usage from local agent logs
-- 📊 Daily heatmap (GitHub-style contribution graph)
+- 🔌 Auto-collect token usage from local agent logs (incremental — only re-parses changed files)
+- 💰 Estimated cost in USD, per agent / per model / per record (editable price table in `src/pricing.js`)
+- 📈 Daily usage trend chart (agent-stacked, 7 / 30 / 90 / all-day ranges)
+- 📊 Daily heatmap (GitHub-style contribution graph) — click a day to drill into its records
 - 🤖 Per-agent and per-model breakdown
 - 🌙 Dark theme with orange accent
 - 💻 Desktop floating widget showing today's usage
 - ⌨️ Global hotkey support (Electron)
+
+### Rebuild
+
+The **Rebuild** button wipes the aggregated stats and re-parses all logs from
+scratch. Use it after upgrading (so corrected model names / timestamps replace
+old rows) or if numbers look wrong. Your raw agent logs are never modified.
+
+### Cost estimates
+
+Costs are **estimates**. Prices live in `src/pricing.js` (USD per 1M tokens) —
+edit them to match what you actually pay. Unknown models show `—` (no cost),
+never a fabricated number. Token accounting is normalized so cached input is
+priced separately from fresh input across all agents.
 
 ## Supported Agents
 

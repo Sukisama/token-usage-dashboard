@@ -36,7 +36,8 @@ function collect() {
         session_id: sessionId,
         timestamp,
         model: line.model || null,
-        input_tokens: inputOther + inputCacheCreation,
+        // Non-cached input only; cache creation/read are priced separately.
+        input_tokens: inputOther,
         output_tokens: output,
         cache_read_tokens: inputCacheRead,
         cache_creation_tokens: inputCacheCreation,
