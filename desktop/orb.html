@@ -16,20 +16,23 @@
       radial-gradient(circle at 32% 28%, #ffb877 0%, #fb923c 32%, #f97316 60%, #c2410c 100%);
     box-shadow:
       0 0 0 1px rgba(255,180,120,.35) inset,
-      0 6px 18px rgba(249,115,22,.45),
-      0 0 34px rgba(249,115,22,.55);
+      0 3px 10px rgba(249,115,22,.35),
+      0 0 16px rgba(249,115,22,.45);
     cursor: grab;
     transition: transform .12s ease;
   }
   .orb:active { cursor: grabbing; transform: scale(.96); }
+  /* Soft radial halo that fades fully to transparent before the window edge,
+     so there is no hard-clipped rectangular glow. */
   .orb::after {
-    content: ""; position: absolute; inset: -6px; border-radius: 50%;
-    box-shadow: 0 0 22px 4px rgba(249,115,22,.35);
+    content: ""; position: absolute; inset: -22px; border-radius: 50%;
+    background: radial-gradient(circle, rgba(249,115,22,.34) 38%, rgba(249,115,22,0) 70%);
+    z-index: -1;
     animation: pulse 2.8s ease-in-out infinite;
   }
   @keyframes pulse {
-    0%,100% { opacity: .5; transform: scale(1); }
-    50%     { opacity: .9; transform: scale(1.08); }
+    0%,100% { opacity: .55; transform: scale(1); }
+    50%     { opacity: .9;  transform: scale(1.06); }
   }
   .glossy { position: absolute; top: 8px; left: 16px; width: 46px; height: 30px;
     background: radial-gradient(ellipse at center, rgba(255,255,255,.55), rgba(255,255,255,0) 70%);

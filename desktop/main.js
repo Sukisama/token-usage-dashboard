@@ -13,7 +13,7 @@ let dashboardWin = null;
 let tray = null;
 let serverProcess = null;
 
-const ORB_SIZE = 130;      // window box; the glowing orb (88px) sits inside with glow margin
+const ORB_SIZE = 150;      // window box; the glowing orb (88px) sits inside with glow margin
 const PANEL_W = 300;
 const PANEL_H = 430;
 
@@ -61,6 +61,7 @@ function createOrb() {
     y: workArea.y + 80,
     frame: false,
     transparent: true,
+    backgroundColor: '#00000000',
     resizable: false,
     movable: true,
     hasShadow: false,
@@ -128,7 +129,9 @@ function openDashboard() {
     height: 820,
     minWidth: 900,
     minHeight: 600,
-    titleBarStyle: 'hiddenInset',
+    resizable: true,
+    movable: true,
+    title: 'Token 用量看板',
     backgroundColor: '#0f0f11',
     icon: appIcon(),
     webPreferences: { nodeIntegration: false, contextIsolation: true }
