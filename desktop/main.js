@@ -1,0 +1,201 @@
+const { app, BrowserWindow, Tray, Menu, globalShortcut, ipcMain, nativeImage, screen } = require('electron');
+const path = require('path');
+const fs = require('fs');
+const http = require('http');
+const { spawn } = require('child_process');
+
+const PORT = 7373;
+const ROOT = path.join(__dirname, '..');
+
+let orbWin = null;
+let panelWin = null;
+let dashboardWin = null;
+let tray = null;
+let serverProcess = null;
+
+const ORB_SIZE = 130;      // window box; the glowing orb (88px) sits inside with glow margin
+const PANEL_W = 300;
+const PANEL_H = 430;
+
+// ---- local server -----------------------------------------------------------
+
+function pingServer() {
+  return new Promise(resolve => {
+    const req = http.get(`http://localhost:${PORT}/api/summary`, res => {
+      res.resume();
+      resolve(true);
+    });
+    req.on('error', () => resolve(false));
+    req.setTimeout(800, () => { req.destroy(); resolve(false); });
+  });
+}
+
+async function ensureServer() {
+  if (await pingServer()) return;
+  serverProcess = spawn(process.execPath, [path.join(ROOT, 'server.js')], {
+    cwd: ROOT,
+    env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' },
+    stdio: 'ignore',
+    detached: false
+  });
+  // Wait until it answers (up to ~6s).
+  for (let i = 0; i < 30; i++) {
+    if (await pingServer()) return;
+    await new Promise(r => setTimeout(r, 200));
+  }
+}
+
+// ---- windows ----------------------------------------------------------------
+
+function appIcon() {
+  const p = path.join(ROOT, 'assets', 'icon.png');
+  return fs.existsSync(p) ? nativeImage.createFromPath(p) : undefined;
+}
+
+function createOrb() {
+  const { workArea } = screen.getPrimaryDisplay();
+  orbWin = new BrowserWindow({
+    width: ORB_SIZE,
+    height: ORB_SIZE,
+    x: workArea.x + workArea.width - ORB_SIZE - 24,
+    y: workArea.y + 80,
+    frame: false,
+    transparent: true,
+    resizable: false,
+    movable: true,
+    hasShadow: false,
+    alwaysOnTop: true,
+    skipTaskbar: true,
+    fullscreenable: false,
+    webPreferences: { preload: path.join(__dirname, 'preload.js') }
+  });
+  orbWin.setAlwaysOnTop(true, 'screen-saver');
+  orbWin.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+  orbWin.loadFile(path.join(__dirname, 'orb.html'));
+}
+
+function createPanel() {
+  panelWin = new BrowserWindow({
+    width: PANEL_W,
+    height: PANEL_H,
+    frame: false,
+    transparent: true,
+    resizable: false,
+    hasShadow: false,
+    alwaysOnTop: true,
+    skipTaskbar: true,
+    show: false,
+    fullscreenable: false,
+    webPreferences: { preload: path.join(__dirname, 'preload.js') }
+  });
+  panelWin.setAlwaysOnTop(true, 'screen-saver');
+  panelWin.loadFile(path.join(__dirname, 'panel.html'));
+  panelWin.on('blur', () => panelWin.hide());
+}
+
+function positionPanelNearOrb() {
+  const o = orbWin.getBounds();
+  const { workArea } = screen.getDisplayMatching(o);
+  let x = o.x + o.width / 2 - PANEL_W / 2;
+  let y = o.y + o.height + 6;
+  // keep on screen; flip above the orb if not enough room below
+  x = Math.max(workArea.x + 6, Math.min(x, workArea.x + workArea.width - PANEL_W - 6));
+  if (y + PANEL_H > workArea.y + workArea.height) y = o.y - PANEL_H - 6;
+  panelWin.setBounds({ x: Math.round(x), y: Math.round(y), width: PANEL_W, height: PANEL_H });
+}
+
+function togglePanel() {
+  if (!panelWin) createPanel();
+  if (panelWin.isVisible()) {
+    panelWin.hide();
+  } else {
+    positionPanelNearOrb();
+    panelWin.webContents.send('panel:refresh');
+    panelWin.show();
+    panelWin.focus();
+  }
+}
+
+function openDashboard() {
+  if (panelWin && panelWin.isVisible()) panelWin.hide();
+  if (dashboardWin && !dashboardWin.isDestroyed()) {
+    dashboardWin.show();
+    dashboardWin.focus();
+    return;
+  }
+  dashboardWin = new BrowserWindow({
+    width: 1200,
+    height: 820,
+    minWidth: 900,
+    minHeight: 600,
+    titleBarStyle: 'hiddenInset',
+    backgroundColor: '#0f0f11',
+    icon: appIcon(),
+    webPreferences: { nodeIntegration: false, contextIsolation: true }
+  });
+  dashboardWin.loadURL(`http://localhost:${PORT}`);
+}
+
+function toggleOrb() {
+  if (!orbWin) return createOrb();
+  if (orbWin.isVisible()) orbWin.hide();
+  else { orbWin.show(); orbWin.focus(); }
+}
+
+// ---- tray -------------------------------------------------------------------
+
+function createTray() {
+  let img;
+  const trayPath = path.join(ROOT, 'assets', 'trayTemplate.png');
+  if (fs.existsSync(trayPath)) {
+    img = nativeImage.createFromPath(trayPath);
+    img.setTemplateImage(true);
+  } else {
+    img = nativeImage.createEmpty();
+  }
+  tray = new Tray(img);
+  tray.setToolTip('Token 用量看板');
+  tray.setContextMenu(Menu.buildFromTemplate([
+    { label: '显示/隐藏悬浮球', click: toggleOrb },
+    { label: '打开完整看板', click: openDashboard },
+    { type: 'separator' },
+    { label: '退出', click: () => app.quit() }
+  ]));
+  tray.on('click', togglePanel);
+}
+
+// ---- ipc --------------------------------------------------------------------
+
+ipcMain.on('orb:move-by', (_e, { dx, dy }) => {
+  if (!orbWin) return;
+  const [x, y] = orbWin.getPosition();
+  orbWin.setPosition(Math.round(x + dx), Math.round(y + dy));
+  if (panelWin && panelWin.isVisible()) positionPanelNearOrb();
+});
+ipcMain.on('orb:toggle-panel', togglePanel);
+ipcMain.on('panel:open-dashboard', openDashboard);
+ipcMain.on('panel:close', () => panelWin && panelWin.hide());
+ipcMain.on('app:quit', () => app.quit());
+ipcMain.handle('app:port', () => PORT);
+
+// ---- lifecycle --------------------------------------------------------------
+
+app.whenReady().then(async () => {
+  const icon = appIcon();
+  if (icon && process.platform === 'darwin' && app.dock) app.dock.setIcon(icon);
+  await ensureServer();
+  createOrb();
+  createPanel();
+  createTray();
+
+  const hotkey = process.platform === 'darwin' ? 'Cmd+Shift+T' : 'Ctrl+Shift+T';
+  globalShortcut.register(hotkey, togglePanel);
+
+  app.on('activate', () => { if (!orbWin) createOrb(); else orbWin.show(); });
+});
+
+app.on('window-all-closed', () => { /* stay alive in tray */ });
+app.on('will-quit', () => {
+  globalShortcut.unregisterAll();
+  if (serverProcess) serverProcess.kill();
+});

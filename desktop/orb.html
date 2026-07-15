@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; -webkit-user-select: none; user-select: none; }
+  html, body { width: 100%; height: 100%; background: transparent; overflow: hidden; cursor: default; }
+  body { display: flex; align-items: center; justify-content: center;
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", sans-serif; }
+
+  .orb {
+    position: relative;
+    width: 88px; height: 88px; border-radius: 50%;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    background:
+      radial-gradient(circle at 32% 28%, #ffb877 0%, #fb923c 32%, #f97316 60%, #c2410c 100%);
+    box-shadow:
+      0 0 0 1px rgba(255,180,120,.35) inset,
+      0 6px 18px rgba(249,115,22,.45),
+      0 0 34px rgba(249,115,22,.55);
+    cursor: grab;
+    transition: transform .12s ease;
+  }
+  .orb:active { cursor: grabbing; transform: scale(.96); }
+  .orb::after {
+    content: ""; position: absolute; inset: -6px; border-radius: 50%;
+    box-shadow: 0 0 22px 4px rgba(249,115,22,.35);
+    animation: pulse 2.8s ease-in-out infinite;
+  }
+  @keyframes pulse {
+    0%,100% { opacity: .5; transform: scale(1); }
+    50%     { opacity: .9; transform: scale(1.08); }
+  }
+  .glossy { position: absolute; top: 8px; left: 16px; width: 46px; height: 30px;
+    background: radial-gradient(ellipse at center, rgba(255,255,255,.55), rgba(255,255,255,0) 70%);
+    border-radius: 50%; pointer-events: none; }
+
+  .label { font-size: 9px; font-weight: 600; letter-spacing: .5px;
+    color: rgba(255,255,255,.85); text-shadow: 0 1px 2px rgba(0,0,0,.35); }
+  .value { font-size: 20px; font-weight: 800; line-height: 1.05; color: #fff;
+    text-shadow: 0 1px 3px rgba(0,0,0,.4); z-index: 1; }
+  .unit { font-size: 9px; font-weight: 600; color: rgba(255,255,255,.85);
+    text-shadow: 0 1px 2px rgba(0,0,0,.35); }
+</style>
+</head>
+<body>
+  <div class="orb" id="orb">
+    <div class="glossy"></div>
+    <div class="label">今日</div>
+    <div class="value" id="value">—</div>
+    <div class="unit">tokens</div>
+  </div>
+
+<script>
+  const orb = document.getElementById('orb');
+  const valueEl = document.getElementById('value');
+  let PORT = 7373;
+
+  function fmt(n) {
+    if (!n) return '0';
+    if (n >= 1e6) return (n / 1e6).toFixed(1) + 'M';
+    if (n >= 1e3) return (n / 1e3).toFixed(1) + 'K';
+    return String(n);
+  }
+
+  async function refresh() {
+    try {
+      const res = await fetch(`http://localhost:${PORT}/api/summary`);
+      const data = await res.json();
+      const today = (data.today || []).reduce((s, t) => s + (t.total_tokens || 0), 0);
+      valueEl.textContent = fmt(today);
+    } catch { /* server not up yet */ }
+  }
+
+  // --- drag vs click -------------------------------------------------------
+  let dragging = false, moved = false, lastX = 0, lastY = 0;
+  orb.addEventListener('mousedown', e => {
+    if (e.button !== 0) return;
+    dragging = true; moved = false; lastX = e.screenX; lastY = e.screenY;
+  });
+  window.addEventListener('mousemove', e => {
+    if (!dragging) return;
+    const dx = e.screenX - lastX, dy = e.screenY - lastY;
+    if (Math.abs(dx) > 2 || Math.abs(dy) > 2) moved = true;
+    if (dx || dy) { window.orbAPI.moveBy(dx, dy); lastX = e.screenX; lastY = e.screenY; }
+  });
+  window.addEventListener('mouseup', () => {
+    if (!dragging) return;
+    dragging = false;
+    if (!moved) window.orbAPI.togglePanel();
+  });
+  orb.addEventListener('contextmenu', e => { e.preventDefault(); window.orbAPI.togglePanel(); });
+
+  (async () => {
+    try { const p = await window.orbAPI?.port?.(); if (p) PORT = p; } catch {}
+    refresh();
+    setInterval(refresh, 8000);
+  })();
+</script>
+</body>
+</html>

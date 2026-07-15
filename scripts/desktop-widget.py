@@ -22,7 +22,8 @@ def get_today_usage():
         conn = sqlite3.connect(DB_PATH)
         cursor = conn.cursor()
         cursor.execute(
-            "SELECT COALESCE(SUM(total_tokens), 0) FROM usage_records WHERE date(timestamp) = ?",
+            "SELECT COALESCE(SUM(total_tokens), 0) FROM usage_records "
+            "WHERE date(timestamp, 'localtime') = ?",
             (today,),
         )
         total = cursor.fetchone()[0]

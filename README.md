@@ -49,25 +49,34 @@ npm start
 
 Then open `http://localhost:7373` and click **Scan Logs**.
 
-## Desktop Mode with Global Hotkey
+## Desktop Mode
 
-### Option A: Electron (recommended)
+### Option A: Floating Orb Widget (recommended) 🟠
+
+A glowing always-on-top orb showing today's tokens. **Click it** to expand a
+native panel (today's tokens, cost, per-agent breakdown) — no browser. **Drag**
+to move it. Right-click also opens the panel. From the panel, "打开完整看板"
+opens the full dashboard in its own app window.
 
 ```bash
-npm install electron --save-dev
+npm install electron --save-dev   # first time only
+npm run widget
+```
+
+Or double-click `scripts/LizhiTokenWidget.app`.
+
+- Menu-bar (tray) icon: show/hide the orb, open the dashboard, quit.
+- Global hotkey to toggle the panel — macOS: `Cmd + Shift + T`, others: `Ctrl + Shift + T`.
+
+### Option B: Full-window Electron app
+
+```bash
 npm run electron
 ```
 
-Default global hotkey:
+### Legacy: lightweight Python widget
 
-- macOS: `Cmd + Shift + T`
-- Windows/Linux: `Ctrl + Shift + T`
-
-### Option B: macOS Floating Widget
-
-Double-click `scripts/LizhiTokenWidget.app` to open a small floating widget that shows today's token usage. Click it to open the full dashboard. Right-click to quit.
-
-You can also run it directly:
+A minimal tkinter widget (no Electron needed) still ships as a fallback:
 
 ```bash
 python3 scripts/desktop-widget.py
