@@ -13,9 +13,16 @@
         <h1>Token 用量看板</h1>
         <p class="subtitle">跨 Agent 用量统计 · 自动采集本地日志</p>
       </div>
-      <button id="scanBtn" class="scan-btn">
-        <span class="icon">↻</span> 扫描日志
-      </button>
+      <div class="header-actions">
+        <button id="exportBtn" class="secondary-btn">导出数据</button>
+        <label class="secondary-btn file-label">
+          导入数据
+          <input type="file" id="importInput" accept=".db" hidden>
+        </label>
+        <button id="scanBtn" class="scan-btn">
+          <span class="icon">↻</span> 扫描日志
+        </button>
+      </div>
     </header>
 
     <div id="scanStatus" class="scan-status"></div>
@@ -60,7 +67,9 @@
           <span>多</span>
         </div>
       </div>
-      <div id="heatmap" class="heatmap"></div>
+      <div class="heatmap-wrapper">
+        <div id="heatmap" class="heatmap"></div>
+      </div>
     </section>
 
     <section class="details-section">

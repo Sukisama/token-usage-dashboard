@@ -7,6 +7,7 @@ const collectors = require('./src/collectors');
 
 const PORT = 7373;
 const SRC_DIR = path.join(__dirname, 'src');
+const DB_PATH = path.join(require('os').homedir(), '.token-usage-dashboard', 'usage.db');
 
 const MIME_TYPES = {
   '.html': 'text/html',
@@ -50,43 +51,81 @@ function serveStatic(req, res) {
   fs.createReadStream(filePath).pipe(res);
 }
 
-async function handleApi(req, res) {
-  res.writeHead(200, { 'Content-Type': 'application/json' });
+function parseBody(req) {
+  return new Promise((resolve, reject) => {
+    const chunks = [];
+    req.on('data', chunk => chunks.push(chunk));
+    req.on('end', () => {
+      try {
+        const body = Buffer.concat(chunks).toString('utf8');
+        resolve(body ? JSON.parse(body) : {});
+      } catch (err) {
+        reject(err);
+      }
+    });
+    req.on('error', reject);
+  });
+}
 
+function sendJson(res, data, status = 200) {
+  res.writeHead(status, { 'Content-Type': 'application/json' });
+  res.end(JSON.stringify(data));
+}
+
+async function handleApi(req, res) {
   try {
     if (req.url === '/api/scan') {
       const results = await scanAll();
-      res.end(JSON.stringify(results));
+      sendJson(res, results);
     } else if (req.url === '/api/summary') {
-      res.end(JSON.stringify(db.getSummary()));
+      sendJson(res, db.getSummary());
     } else if (req.url.startsWith('/api/daily')) {
       const url = new URL(req.url, `http://localhost:${PORT}`);
       const agent = url.searchParams.get('agent') || 'all';
-      res.end(JSON.stringify(db.getDailyUsage(agent)));
+      sendJson(res, db.getDailyUsage(agent));
     } else if (req.url === '/api/agents') {
-      res.end(JSON.stringify(db.getAgents()));
+      sendJson(res, db.getAgents());
     } else if (req.url.startsWith('/api/records')) {
       const url = new URL(req.url, `http://localhost:${PORT}`);
       const agent = url.searchParams.get('agent') || 'all';
       const limit = parseInt(url.searchParams.get('limit') || '50', 10);
       const offset = parseInt(url.searchParams.get('offset') || '0', 10);
-      res.end(JSON.stringify(db.getRecords({ agent, limit, offset })));
+      sendJson(res, db.getRecords({ agent, limit, offset }));
     } else if (req.url.startsWith('/api/models')) {
       const url = new URL(req.url, `http://localhost:${PORT}`);
       const agent = url.searchParams.get('agent') || 'all';
-      res.end(JSON.stringify(db.getModelUsage(agent)));
+      sendJson(res, db.getModelUsage(agent));
+    } else if (req.url === '/api/export') {
+      // Download SQLite DB file
+      if (!fs.existsSync(DB_PATH)) {
+        sendJson(res, { error: 'No data to export' }, 404);
+        return;
+      }
+      const data = fs.readFileSync(DB_PATH);
+      res.writeHead(200, {
+        'Content-Type': 'application/octet-stream',
+        'Content-Disposition': 'attachment; filename="token-usage-dashboard.db"',
+        'Content-Length': data.length
+      });
+      res.end(data);
+    } else if (req.url === '/api/import' && req.method === 'POST') {
+      const body = await parseBody(req);
+      if (!body.data) {
+        sendJson(res, { error: 'Missing data' }, 400);
+        return;
+      }
+      const buffer = Buffer.from(body.data, 'base64');
+      const inserted = db.importFromBuffer(buffer);
+      sendJson(res, { inserted });
     } else {
-      res.writeHead(404);
-      res.end(JSON.stringify({ error: 'Not found' }));
+      sendJson(res, { error: 'Not found' }, 404);
     }
   } catch (err) {
-    res.writeHead(500);
-    res.end(JSON.stringify({ error: err.message }));
+    sendJson(res, { error: err.message }, 500);
   }
 }
 
 const server = http.createServer(async (req, res) => {
-  // CORS for local development
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
@@ -110,7 +149,6 @@ async function start() {
   server.listen(PORT, () => {
     console.log(`Token 用量看板已启动: http://localhost:${PORT}`);
 
-    // Open browser on macOS
     if (process.platform === 'darwin') {
       exec(`open http://localhost:${PORT}`);
     }

@@ -83,6 +83,35 @@ body {
   cursor: not-allowed;
 }
 
+.header-actions {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.secondary-btn {
+  display: inline-flex;
+  align-items: center;
+  padding: 9px 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.secondary-btn:hover {
+  border-color: var(--brand);
+  color: var(--brand-light);
+}
+
+.file-label input {
+  display: none;
+}
+
 .icon {
   font-size: 16px;
 }
@@ -205,13 +234,23 @@ body {
   width: 12px;
   height: 12px;
   border-radius: 2px;
+  background: var(--surface-2);
+}
+
+.legend-cell.level-1 { background: #7c2d12; }
+.legend-cell.level-2 { background: #c2410c; }
+.legend-cell.level-3 { background: #ea580c; }
+.legend-cell.level-4 { background: #f97316; }
+
+.heatmap-wrapper {
+  overflow-x: auto;
+  padding: 8px 0;
 }
 
 .heatmap {
   display: flex;
   gap: 4px;
-  overflow-x: auto;
-  padding-bottom: 8px;
+  min-width: min-content;
 }
 
 .week {

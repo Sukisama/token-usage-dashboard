@@ -232,6 +232,25 @@ function getModelUsage(agent) {
   return query(sql, params);
 }
 
+function importFromBuffer(buffer) {
+  const importedDb = new SQL.Database(buffer);
+
+  const stmt = importedDb.prepare(`
+    SELECT agent, session_id, timestamp, model, input_tokens, output_tokens,
+           cache_read_tokens, cache_creation_tokens, reasoning_tokens, total_tokens, source_file
+    FROM usage_records
+  `);
+
+  const records = [];
+  while (stmt.step()) {
+    records.push(stmt.getAsObject());
+  }
+  stmt.free();
+  importedDb.close();
+
+  return insertUsageRecords(records);
+}
+
 function getRecords({ agent, limit = 100, offset = 0 }) {
   let sql;
   let params = [];
@@ -259,6 +278,7 @@ function getRecords({ agent, limit = 100, offset = 0 }) {
 module.exports = {
   init,
   insertUsageRecords,
+  importFromBuffer,
   getSummary,
   getDailyUsage,
   getAgents,

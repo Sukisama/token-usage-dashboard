@@ -32,6 +32,14 @@ const api = {
   async getModelUsage(agent) {
     const res = await fetch(`/api/models?agent=${encodeURIComponent(agent)}`);
     return res.json();
+  },
+  async importData(base64) {
+    const res = await fetch('/api/import', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ data: base64 })
+    });
+    return res.json();
   }
 };
 
@@ -282,7 +290,47 @@ async function loadModels(agent) {
   }
 }
 
+async function exportData() {
+  const res = await fetch('/api/export');
+  if (!res.ok) {
+    alert('导出失败');
+    return;
+  }
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `token-usage-dashboard-${new Date().toISOString().split('T')[0]}.db`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+async function importData(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+
+  const status = document.getElementById('scanStatus');
+  status.textContent = '正在导入...';
+  status.className = 'scan-status';
+
+  try {
+    const arrayBuffer = await file.arrayBuffer();
+    const base64 = btoa(String.fromCharCode(...new Uint8Array(arrayBuffer)));
+    const result = await api.importData(base64);
+    status.textContent = `导入完成，合并 ${result.inserted} 条记录。`;
+    status.classList.add('success');
+    await loadDashboard();
+  } catch (err) {
+    status.textContent = '导入失败: ' + err.message;
+    status.classList.add('error');
+  }
+
+  event.target.value = '';
+}
+
 // Init
 document.getElementById('scanBtn').addEventListener('click', scanAll);
+document.getElementById('exportBtn').addEventListener('click', exportData);
+document.getElementById('importInput').addEventListener('change', importData);
 
 loadDashboard();
