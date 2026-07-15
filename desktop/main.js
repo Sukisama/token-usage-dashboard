@@ -219,6 +219,9 @@ ipcMain.on('panel:close', () => panelWin && panelWin.hide());
 ipcMain.on('app:quit', () => app.quit());
 ipcMain.handle('app:port', () => PORT);
 ipcMain.handle('app:orb-metric', () => config.orbMetric);
+ipcMain.on('app:set-orb-metric', (_e, m) => {
+  if (METRIC_LABELS[m]) setOrbMetric(m);
+});
 
 // ---- lifecycle --------------------------------------------------------------
 

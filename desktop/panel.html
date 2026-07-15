@@ -22,10 +22,21 @@
   .top h1 { font-size: 14px; font-weight: 700; }
   .top-right { display: flex; align-items: center; gap: 10px; }
   .date { font-size: 11px; color: var(--text-2); white-space: nowrap; }
-  .close { width: 20px; height: 20px; border: none; background: transparent;
+  .icon-btn { width: 22px; height: 22px; border: none; background: transparent;
     color: var(--text-2); font-size: 14px; cursor: pointer; line-height: 1;
     display: flex; align-items: center; justify-content: center; border-radius: 6px; flex: 0 0 auto; }
-  .close:hover { color: var(--text); background: var(--surface-2); }
+  .icon-btn:hover { color: var(--text); background: var(--surface-2); }
+  .icon-btn.active { color: var(--brand-light); }
+
+  .settings { margin-top: 10px; background: var(--surface-2); border: 1px solid var(--border);
+    border-radius: 10px; padding: 10px 12px; }
+  .settings-label { font-size: 11px; color: var(--text-2); margin-bottom: 8px; }
+  .settings-opts { display: flex; gap: 5px; }
+  .settings-opts button { flex: 1; padding: 5px 0; border: 1px solid var(--border);
+    border-radius: 7px; background: #1c1c20; color: var(--text-2); font-size: 12px; cursor: pointer; }
+  .settings-opts button:hover { color: var(--text); }
+  .settings-opts button.active { background: var(--brand); border-color: var(--brand); color: #fff; font-weight: 600; }
+  .settings-hint { font-size: 10px; color: var(--text-2); margin-top: 8px; opacity: .8; }
 
   .periods { display: flex; gap: 5px; margin-top: 12px; }
   .pbtn { flex: 1; padding: 5px 0; border: 1px solid var(--border); border-radius: 8px;
@@ -63,8 +74,20 @@
       <h1 id="title">今日用量</h1>
       <div class="top-right">
         <span class="date" id="date"></span>
-        <button class="close" id="close">✕</button>
+        <button class="icon-btn" id="gear" title="设置">⚙</button>
+        <button class="icon-btn" id="close">✕</button>
       </div>
+    </div>
+
+    <div class="settings" id="settings" hidden>
+      <div class="settings-label">悬浮球显示</div>
+      <div class="settings-opts" id="orbOpts">
+        <button data-metric="today">今日</button>
+        <button data-metric="week">本周</button>
+        <button data-metric="month">本月</button>
+        <button data-metric="all">全部</button>
+      </div>
+      <div class="settings-hint">小球数字按此口径显示；颜色始终反映今日热度</div>
     </div>
 
     <div class="periods" id="periods">
@@ -148,9 +171,29 @@
   document.getElementById('close').addEventListener('click', () => window.orbAPI?.closePanel());
   window.orbAPI?.onRefresh?.(() => render());
 
+  // --- settings (what the orb displays) ------------------------------------
+  const gear = document.getElementById('gear');
+  const settings = document.getElementById('settings');
+  gear.addEventListener('click', () => {
+    settings.hidden = !settings.hidden;
+    gear.classList.toggle('active', !settings.hidden);
+  });
+  async function markOrbMetric() {
+    let m = 'today';
+    try { m = (await window.orbAPI?.orbMetric?.()) || 'today'; } catch {}
+    document.querySelectorAll('#orbOpts button')
+      .forEach(b => b.classList.toggle('active', b.dataset.metric === m));
+  }
+  document.querySelectorAll('#orbOpts button').forEach(b =>
+    b.addEventListener('click', () => {
+      window.orbAPI?.setOrbMetric?.(b.dataset.metric);
+      document.querySelectorAll('#orbOpts button')
+        .forEach(x => x.classList.toggle('active', x === b));
+    }));
+
   (async () => {
     try { const p = await window.orbAPI?.port?.(); if (p) PORT = p; } catch {}
-    render(); loadFooter();
+    render(); loadFooter(); markOrbMetric();
   })();
 </script>
 </body>
