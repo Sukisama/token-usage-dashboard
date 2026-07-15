@@ -441,6 +441,13 @@ body {
   box-shadow: var(--shadow);
 }
 
+.trend-controls {
+  display: flex;
+  gap: 14px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
 .range-tabs {
   display: flex;
   gap: 6px;

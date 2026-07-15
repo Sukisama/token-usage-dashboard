@@ -13,7 +13,7 @@ let dashboardWin = null;
 let tray = null;
 let serverProcess = null;
 
-const ORB_SIZE = 150;      // window box; the glowing orb (88px) sits inside with glow margin
+const ORB_SIZE = 112;      // window box; the glowing orb (62px) sits inside with halo margin
 const PANEL_W = 300;
 const PANEL_H = 430;
 

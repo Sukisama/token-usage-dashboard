@@ -8,50 +8,72 @@
   body { display: flex; align-items: center; justify-content: center;
     font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", sans-serif; }
 
+  .stage { position: relative; width: 62px; height: 62px; }
+
+  /* soft breathing halo behind the sphere; fades fully to transparent
+     before the window edge so there is no clipped rectangle */
+  .halo {
+    position: absolute; inset: -25px; border-radius: 50%; z-index: 0;
+    background: radial-gradient(circle, rgba(249,115,22,.42) 30%, rgba(249,115,22,0) 68%);
+    animation: breathe 3.4s ease-in-out infinite;
+  }
+  @keyframes breathe {
+    0%,100% { opacity: .5;  transform: scale(.94); }
+    50%     { opacity: .85; transform: scale(1.06); }
+  }
+
   .orb {
-    position: relative;
-    width: 88px; height: 88px; border-radius: 50%;
+    position: relative; z-index: 1; width: 62px; height: 62px; border-radius: 50%;
+    overflow: hidden; cursor: grab;
     display: flex; flex-direction: column; align-items: center; justify-content: center;
     background:
-      radial-gradient(circle at 32% 28%, #ffb877 0%, #fb923c 32%, #f97316 60%, #c2410c 100%);
+      radial-gradient(circle at 34% 26%,
+        #ffd6a8 0%, #fdb877 20%, #fb923c 42%, #f97316 62%, #d94f0b 84%, #a23808 100%);
     box-shadow:
-      0 0 0 1px rgba(255,180,120,.35) inset,
-      0 3px 10px rgba(249,115,22,.35),
-      0 0 16px rgba(249,115,22,.45);
-    cursor: grab;
+      inset 0 2px 5px rgba(255,226,190,.65),
+      inset 0 -7px 13px rgba(120,42,6,.6),
+      inset 0 0 0 1px rgba(255,180,120,.25),
+      0 4px 12px rgba(249,115,22,.4);
     transition: transform .12s ease;
   }
-  .orb:active { cursor: grabbing; transform: scale(.96); }
-  /* Soft radial halo that fades fully to transparent before the window edge,
-     so there is no hard-clipped rectangular glow. */
-  .orb::after {
-    content: ""; position: absolute; inset: -22px; border-radius: 50%;
-    background: radial-gradient(circle, rgba(249,115,22,.34) 38%, rgba(249,115,22,0) 70%);
-    z-index: -1;
-    animation: pulse 2.8s ease-in-out infinite;
-  }
-  @keyframes pulse {
-    0%,100% { opacity: .55; transform: scale(1); }
-    50%     { opacity: .9;  transform: scale(1.06); }
-  }
-  .glossy { position: absolute; top: 8px; left: 16px; width: 46px; height: 30px;
-    background: radial-gradient(ellipse at center, rgba(255,255,255,.55), rgba(255,255,255,0) 70%);
-    border-radius: 50%; pointer-events: none; }
+  .orb:active { cursor: grabbing; transform: scale(.95); }
 
-  .label { font-size: 9px; font-weight: 600; letter-spacing: .5px;
-    color: rgba(255,255,255,.85); text-shadow: 0 1px 2px rgba(0,0,0,.35); }
-  .value { font-size: 20px; font-weight: 800; line-height: 1.05; color: #fff;
-    text-shadow: 0 1px 3px rgba(0,0,0,.4); z-index: 1; }
-  .unit { font-size: 9px; font-weight: 600; color: rgba(255,255,255,.85);
-    text-shadow: 0 1px 2px rgba(0,0,0,.35); }
+  /* rotating specular sweep — the "炫" shimmer */
+  .sheen {
+    position: absolute; inset: -30%; border-radius: 50%; pointer-events: none;
+    background: conic-gradient(from 0deg,
+      rgba(255,255,255,0) 0deg,
+      rgba(255,255,255,0) 55deg,
+      rgba(255,255,255,.45) 90deg,
+      rgba(255,255,255,0) 135deg,
+      rgba(255,255,255,0) 360deg);
+    mix-blend-mode: screen; opacity: .8;
+    animation: spin 5.5s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* glossy top-left highlight */
+  .spec {
+    position: absolute; top: 7px; left: 12px; width: 26px; height: 16px;
+    background: radial-gradient(ellipse at center, rgba(255,255,255,.85), rgba(255,255,255,0) 72%);
+    border-radius: 50%; pointer-events: none; filter: blur(.4px);
+  }
+
+  .label { position: relative; z-index: 2; font-size: 8px; font-weight: 600; letter-spacing: .5px;
+    color: rgba(255,255,255,.9); text-shadow: 0 1px 2px rgba(90,30,0,.5); margin-top: 1px; }
+  .value { position: relative; z-index: 2; font-size: 15px; font-weight: 800; line-height: 1.05;
+    color: #fff; text-shadow: 0 1px 3px rgba(80,25,0,.55); }
 </style>
 </head>
 <body>
-  <div class="orb" id="orb">
-    <div class="glossy"></div>
-    <div class="label">今日</div>
-    <div class="value" id="value">—</div>
-    <div class="unit">tokens</div>
+  <div class="stage">
+    <div class="halo"></div>
+    <div class="orb" id="orb">
+      <div class="sheen"></div>
+      <div class="spec"></div>
+      <div class="label">今日</div>
+      <div class="value" id="value">—</div>
+    </div>
   </div>
 
 <script>

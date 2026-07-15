@@ -7,6 +7,19 @@ const AGENT_COLORS = {
   'unknown': '#a1a1aa'
 };
 
+// Categorical palette for the per-model trend (assigned biggest-model-first).
+const MODEL_PALETTE = ['#f97316', '#f472b6', '#38bdf8', '#a78bfa', '#4ade80',
+  '#fbbf24', '#2dd4bf', '#fb7185', '#818cf8', '#a3e635', '#22d3ee', '#e879f9'];
+let modelColorMap = new Map();
+function buildModelColors(rows) {
+  const totals = new Map();
+  for (const r of rows) totals.set(r.model, (totals.get(r.model) || 0) + r.total_tokens);
+  const sorted = [...totals.entries()].sort((a, b) => b[1] - a[1]);
+  modelColorMap = new Map();
+  sorted.forEach(([m], i) => modelColorMap.set(m, MODEL_PALETTE[i % MODEL_PALETTE.length]));
+}
+function modelColor(m) { return modelColorMap.get(m) || AGENT_COLORS.unknown; }
+
 const api = {
   async scanAll() {
     const res = await fetch('/api/scan');
@@ -26,6 +39,10 @@ const api = {
   },
   async getDailyByAgent() {
     const res = await fetch('/api/daily-agents');
+    return res.json();
+  },
+  async getDailyByModel() {
+    const res = await fetch('/api/daily-models');
     return res.json();
   },
   async getAgents() {
@@ -54,8 +71,10 @@ const api = {
 let currentAgent = 'all';
 let dailyData = [];
 let dailyByAgent = [];
+let dailyByModel = [];
 let summaryData = null;
 let trendRange = 30;           // days; 0 = all
+let trendDim = 'agent';        // 'agent' | 'model'
 let recordsDate = null;        // drill-down filter (YYYY-MM-DD) or null
 let recordsOffset = 0;
 const RECORDS_PAGE = 50;
@@ -141,6 +160,8 @@ function reportScan(results, prefix = '扫描完成') {
 async function loadDashboard() {
   summaryData = await api.getSummary();
   dailyByAgent = await api.getDailyByAgent();
+  dailyByModel = await api.getDailyByModel();
+  buildModelColors(dailyByModel);
   renderSummary(summaryData);
   renderAgentTabs(summaryData.byAgent);
   renderAgentList(summaryData.byAgent);
@@ -222,27 +243,50 @@ function renderTrend() {
   container.innerHTML = '';
   legendEl.innerHTML = '';
 
-  if (!dailyByAgent.length) {
+  // Dimension: stack by agent or by model.
+  const rows = trendDim === 'model' ? dailyByModel : dailyByAgent;
+  const keyName = trendDim === 'model' ? 'model' : 'agent';
+  const colorFor = trendDim === 'model'
+    ? modelColor
+    : (a => AGENT_COLORS[a] || AGENT_COLORS.unknown);
+
+  if (!rows.length) {
     container.innerHTML = '<div style="color: var(--text-secondary); padding: 20px;">暂无数据</div>';
     return;
   }
 
-  // Build date -> {agent: tokens} map limited to the selected range.
-  const allDates = [...new Set(dailyByAgent.map(r => r.date))].sort();
+  // Build date -> {series: tokens} map limited to the selected range.
+  const allDates = [...new Set(rows.map(r => r.date))].sort();
   let dates = allDates;
   if (trendRange > 0) {
     dates = allDates.slice(-trendRange);
   }
   const dateSet = new Set(dates);
 
-  const agents = [...new Set(dailyByAgent.map(r => r.agent))];
+  const seriesTotals = new Map();
   const byDate = new Map(dates.map(d => [d, {}]));
-  for (const row of dailyByAgent) {
+  for (const row of rows) {
     if (!dateSet.has(row.date)) continue;
-    byDate.get(row.date)[row.agent] = row.total_tokens;
+    const k = row[keyName];
+    byDate.get(row.date)[k] = (byDate.get(row.date)[k] || 0) + row.total_tokens;
+    seriesTotals.set(k, (seriesTotals.get(k) || 0) + row.total_tokens);
   }
+  // Order series by total desc; fold the long tail into "其他" to keep it legible.
+  let series = [...seriesTotals.entries()].sort((a, b) => b[1] - a[1]).map(e => e[0]);
+  const MAX_SERIES = 12;
+  if (series.length > MAX_SERIES) {
+    const tail = new Set(series.slice(MAX_SERIES - 1));
+    for (const d of dates) {
+      const obj = byDate.get(d);
+      let sum = 0;
+      for (const k of Object.keys(obj)) if (tail.has(k)) { sum += obj[k]; delete obj[k]; }
+      if (sum > 0) obj['其他'] = (obj['其他'] || 0) + sum;
+    }
+    series = [...series.slice(0, MAX_SERIES - 1), '其他'];
+  }
+  const colorOf = k => (k === '其他' ? AGENT_COLORS.unknown : colorFor(k));
 
-  const totals = dates.map(d => agents.reduce((s, a) => s + (byDate.get(d)[a] || 0), 0));
+  const totals = dates.map(d => series.reduce((s, k) => s + (byDate.get(d)[k] || 0), 0));
   const maxTotal = Math.max(1, ...totals);
 
   // Geometry — fill the full container width (no dead space on the right).
@@ -282,8 +326,8 @@ function renderTrend() {
     const x = padLeft + i * slot + (slot - barW) / 2;
     let yCursor = padTop + plotH;
     const dayTotal = totals[i];
-    for (const agent of agents) {
-      const val = byDate.get(d)[agent] || 0;
+    for (const k of series) {
+      const val = byDate.get(d)[k] || 0;
       if (val <= 0) continue;
       const h = (val / maxTotal) * plotH;
       yCursor -= h;
@@ -292,10 +336,10 @@ function renderTrend() {
       rect.setAttribute('y', yCursor);
       rect.setAttribute('width', barW);
       rect.setAttribute('height', Math.max(0.5, h));
-      rect.setAttribute('fill', AGENT_COLORS[agent] || AGENT_COLORS.unknown);
+      rect.setAttribute('fill', colorOf(k));
       rect.setAttribute('class', 'trend-bar');
       const title = document.createElementNS(svgNS, 'title');
-      title.textContent = `${d}\n${agent}: ${formatNumber(val)}\n合计: ${formatNumber(dayTotal)}`;
+      title.textContent = `${d}\n${k}: ${formatNumber(val)}\n合计: ${formatNumber(dayTotal)}`;
       rect.appendChild(title);
       rect.addEventListener('click', () => filterRecordsByDate(d));
       svg.appendChild(rect);
@@ -317,12 +361,19 @@ function renderTrend() {
   container.appendChild(svg);
 
   // Legend
-  for (const agent of agents) {
+  for (const k of series) {
     const lg = document.createElement('div');
     lg.className = 'lg';
-    lg.innerHTML = `<span class="swatch" style="background:${AGENT_COLORS[agent] || AGENT_COLORS.unknown}"></span>${agent}`;
+    lg.innerHTML = `<span class="swatch" style="background:${colorOf(k)}"></span>${k}`;
     legendEl.appendChild(lg);
   }
+}
+
+function switchDim(dim) {
+  trendDim = dim;
+  document.querySelectorAll('#dimTabs .range-tab').forEach(t =>
+    t.classList.toggle('active', t.dataset.dim === dim));
+  renderTrend();
 }
 
 function switchRange(range) {
@@ -590,8 +641,11 @@ document.getElementById('exportBtn').addEventListener('click', exportData);
 document.getElementById('importInput').addEventListener('change', importData);
 document.getElementById('loadMoreBtn').addEventListener('click', () => loadRecords(false));
 document.getElementById('clearFilterBtn').addEventListener('click', clearRecordsFilter);
-document.querySelectorAll('.range-tab').forEach(tab => {
+document.querySelectorAll('#rangeTabs .range-tab').forEach(tab => {
   tab.addEventListener('click', () => switchRange(Number(tab.dataset.range)));
+});
+document.querySelectorAll('#dimTabs .range-tab').forEach(tab => {
+  tab.addEventListener('click', () => switchDim(tab.dataset.dim));
 });
 
 let _resizeTimer = null;

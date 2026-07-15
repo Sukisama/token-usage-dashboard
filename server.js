@@ -101,6 +101,8 @@ async function handleApi(req, res) {
       sendJson(res, db.getSummary());
     } else if (req.url.startsWith('/api/daily-agents')) {
       sendJson(res, db.getDailyByAgent());
+    } else if (req.url.startsWith('/api/daily-models')) {
+      sendJson(res, db.getDailyByModel());
     } else if (req.url.startsWith('/api/daily')) {
       const url = new URL(req.url, `http://localhost:${PORT}`);
       const agent = url.searchParams.get('agent') || 'all';

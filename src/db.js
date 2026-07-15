@@ -256,6 +256,19 @@ function getDailyByAgent() {
   `);
 }
 
+// Per-day, per-model totals for the stacked trend chart (model dimension).
+function getDailyByModel() {
+  return query(`
+    SELECT
+      date(timestamp, 'localtime') as date,
+      COALESCE(NULLIF(model, ''), 'unknown') as model,
+      COALESCE(SUM(total_tokens), 0) as total_tokens
+    FROM usage_records
+    GROUP BY date(timestamp, 'localtime'), model
+    ORDER BY date(timestamp, 'localtime') ASC
+  `);
+}
+
 function getAgents() {
   return query(`
     SELECT DISTINCT agent FROM usage_records ORDER BY agent
@@ -359,6 +372,7 @@ module.exports = {
   getSummary,
   getDailyUsage,
   getDailyByAgent,
+  getDailyByModel,
   getAgents,
   getModelUsage,
   getRecords
