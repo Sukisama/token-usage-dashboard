@@ -1,6 +1,7 @@
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
+const os = require('os');
 const { exec } = require('child_process');
 const db = require('./src/db');
 const collectors = require('./src/collectors');
@@ -8,7 +9,17 @@ const { flushCache, resetCache } = require('./src/collectors/utils');
 
 const PORT = 7373;
 const SRC_DIR = path.join(__dirname, 'src');
-const DB_PATH = path.join(require('os').homedir(), '.token-usage-dashboard', 'usage.db');
+const DB_PATH = path.join(os.homedir(), '.token-usage-dashboard', 'usage.db');
+
+// Agent log roots to watch for changes (auto-refresh the DB in near real time).
+const WATCH_DIRS = [
+  path.join(os.homedir(), '.codex', 'sessions'),
+  path.join(os.homedir(), '.claude', 'projects'),
+  path.join(os.homedir(), '.kimi-code', 'sessions'),
+  path.join(os.homedir(), '.workbuddy')
+];
+const AUTO_SCAN_DEBOUNCE = 3000;      // coalesce a burst of writes
+const AUTO_SCAN_MIN_INTERVAL = 10000; // never scan more often than this
 
 const MIME_TYPES = {
   '.html': 'text/html',
@@ -34,6 +45,44 @@ async function scanAll() {
   // Persist the incremental-scan mtime cache after a full pass.
   flushCache();
   return results;
+}
+
+// --- auto-refresh: incremental scan triggered by log-file changes ------------
+let scanPromise = null;   // shared in-flight scan
+let scanTimer = null;     // pending debounced scan
+let lastScanAt = 0;
+
+// Runs a scan, coalescing concurrent callers onto the same in-flight promise.
+function runScan() {
+  if (scanPromise) return scanPromise;
+  scanPromise = (async () => {
+    try { return await scanAll(); }
+    finally { scanPromise = null; lastScanAt = Date.now(); }
+  })();
+  return scanPromise;
+}
+
+// Schedule an incremental scan after a short debounce, rate-limited so heavy
+// agent activity can't trigger back-to-back scans.
+function scheduleAutoScan() {
+  if (scanTimer || scanPromise) return;
+  const since = Date.now() - lastScanAt;
+  const wait = Math.max(AUTO_SCAN_DEBOUNCE, AUTO_SCAN_MIN_INTERVAL - since);
+  scanTimer = setTimeout(() => {
+    scanTimer = null;
+    runScan().catch(() => {});
+  }, wait);
+}
+
+// Event-driven watchers (FSEvents on macOS): zero CPU when idle, fire only on
+// actual writes. `persistent:false` so watchers never keep the process alive.
+function setupWatchers() {
+  for (const dir of WATCH_DIRS) {
+    if (!fs.existsSync(dir)) continue;
+    try {
+      fs.watch(dir, { recursive: true, persistent: false }, () => scheduleAutoScan());
+    } catch { /* recursive watch unsupported here; skip */ }
+  }
 }
 
 function serveStatic(req, res) {
@@ -87,15 +136,16 @@ function sendJson(res, data, status = 200) {
 async function handleApi(req, res) {
   try {
     if (req.url === '/api/scan') {
-      const results = await scanAll();
+      const results = await runScan();
       sendJson(res, results);
     } else if (req.url === '/api/rebuild' && req.method === 'POST') {
       // Wipe rows + incremental cache, then re-parse everything from scratch.
       // Needed after a collector fix so corrected model/timestamps replace the
       // old rows that INSERT OR IGNORE would otherwise keep.
+      if (scanPromise) await scanPromise;   // let any in-flight scan finish
       db.clearAll();
       resetCache();
-      const results = await scanAll();
+      const results = await runScan();
       sendJson(res, results);
     } else if (req.url === '/api/summary') {
       sendJson(res, db.getSummary());
@@ -185,7 +235,13 @@ async function start() {
   server.listen(PORT, () => {
     console.log(`Token 用量看板已启动: http://localhost:${PORT}`);
 
-    if (process.platform === 'darwin') {
+    // Fresh data on launch, then keep it fresh via file watchers.
+    runScan().catch(() => {});
+    setupWatchers();
+
+    // Open the browser only for a standalone launch — not when the desktop
+    // widget spawns this server as its backend (ELECTRON_RUN_AS_NODE is set).
+    if (process.platform === 'darwin' && !process.env.ELECTRON_RUN_AS_NODE) {
       exec(`open http://localhost:${PORT}`);
     }
   });
