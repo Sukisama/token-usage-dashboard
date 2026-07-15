@@ -12,12 +12,20 @@ const api = {
     const res = await fetch('/api/scan');
     return res.json();
   },
+  async rebuild() {
+    const res = await fetch('/api/rebuild', { method: 'POST' });
+    return res.json();
+  },
   async getSummary() {
     const res = await fetch('/api/summary');
     return res.json();
   },
   async getDailyUsage(agent) {
     const res = await fetch(`/api/daily?agent=${encodeURIComponent(agent)}`);
+    return res.json();
+  },
+  async getDailyByAgent() {
+    const res = await fetch('/api/daily-agents');
     return res.json();
   },
   async getAgents() {
@@ -45,13 +53,26 @@ const api = {
 
 let currentAgent = 'all';
 let dailyData = [];
+let dailyByAgent = [];
 let summaryData = null;
+let trendRange = 30;           // days; 0 = all
+let recordsDate = null;        // drill-down filter (YYYY-MM-DD) or null
+let recordsOffset = 0;
+const RECORDS_PAGE = 50;
 
 function formatNumber(num) {
   if (!num) return '0';
   if (num >= 1000000) return (num / 1000000).toFixed(1) + 'M';
   if (num >= 1000) return (num / 1000).toFixed(1) + 'K';
   return num.toString();
+}
+
+function formatCost(usd) {
+  if (usd == null) return '—';
+  if (usd === 0) return '$0';
+  if (usd < 0.01) return '<$0.01';
+  if (usd < 100) return '$' + usd.toFixed(2);
+  return '$' + usd.toLocaleString('en-US', { maximumFractionDigits: 0 });
 }
 
 function formatDate(dateStr) {
@@ -69,50 +90,73 @@ function formatDateTime(iso) {
   });
 }
 
+function setStatus(text, kind) {
+  const status = document.getElementById('scanStatus');
+  status.textContent = text;
+  status.className = 'scan-status' + (kind ? ' ' + kind : '');
+}
+
 async function scanAll() {
   const btn = document.getElementById('scanBtn');
-  const status = document.getElementById('scanStatus');
   btn.disabled = true;
-  status.textContent = '正在扫描本地日志...';
-  status.className = 'scan-status';
+  setStatus('正在扫描本地日志...');
 
   try {
     const results = await api.scanAll();
-    const total = results.reduce((sum, r) => sum + r.inserted, 0);
-    const errors = results.filter(r => r.error);
-
-    if (errors.length > 0) {
-      status.textContent = `扫描完成，新增 ${total} 条记录。${errors.length} 个 agent 出错。`;
-      status.classList.add('error');
-    } else {
-      status.textContent = `扫描完成，新增 ${total} 条记录。`;
-      status.classList.add('success');
-    }
-
+    reportScan(results);
     await loadDashboard();
   } catch (err) {
-    status.textContent = '扫描失败: ' + err.message;
-    status.classList.add('error');
+    setStatus('扫描失败: ' + err.message, 'error');
   } finally {
     btn.disabled = false;
   }
 }
 
+async function rebuild() {
+  if (!confirm('重建会清空当前统计并从本地日志重新计算（原始日志不受影响）。继续？')) return;
+  const btn = document.getElementById('rebuildBtn');
+  btn.disabled = true;
+  setStatus('正在重建（清空后全量重扫）...');
+  try {
+    const results = await api.rebuild();
+    reportScan(results, '重建完成');
+    await loadDashboard();
+  } catch (err) {
+    setStatus('重建失败: ' + err.message, 'error');
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+function reportScan(results, prefix = '扫描完成') {
+  const total = results.reduce((sum, r) => sum + (r.inserted || 0), 0);
+  const errors = results.filter(r => r.error);
+  if (errors.length > 0) {
+    setStatus(`${prefix}，新增 ${total} 条记录。${errors.length} 个 agent 出错：${errors.map(e => e.agent).join(', ')}`, 'error');
+  } else {
+    setStatus(`${prefix}，新增 ${total} 条记录。`, 'success');
+  }
+}
+
 async function loadDashboard() {
   summaryData = await api.getSummary();
+  dailyByAgent = await api.getDailyByAgent();
   renderSummary(summaryData);
   renderAgentTabs(summaryData.byAgent);
   renderAgentList(summaryData.byAgent);
+  renderTrend();
   await loadHeatmap(currentAgent);
-  await loadRecords(currentAgent);
+  resetRecords();
   await loadModels(currentAgent);
 }
 
 function renderSummary(data) {
   document.getElementById('totalTokens').textContent = formatNumber(data.overall.total_tokens);
+  document.getElementById('totalCost').textContent = formatCost(data.overall.cost);
   document.getElementById('todayTokens').textContent = formatNumber(
     data.today.reduce((sum, t) => sum + t.total_tokens, 0)
   );
+  document.getElementById('todayCost').textContent = formatCost(data.todayCost);
   document.getElementById('activeAgents').textContent = data.byAgent.length;
   document.getElementById('trackedDays').textContent = data.overall.days;
 }
@@ -153,7 +197,10 @@ function renderAgentList(agents) {
           <div class="agent-meta">${agent.records} 条记录 · 最近 ${agent.last_used || '—'}</div>
         </div>
       </div>
-      <div class="agent-total">${formatNumber(agent.total_tokens)}</div>
+      <div style="text-align:right">
+        <div class="agent-total">${formatNumber(agent.total_tokens)}</div>
+        <div class="agent-meta">${formatCost(agent.cost)}</div>
+      </div>
     `;
     container.appendChild(item);
   }
@@ -163,9 +210,129 @@ async function switchAgent(agent) {
   currentAgent = agent;
   renderAgentTabs(summaryData.byAgent);
   await loadHeatmap(agent);
-  await loadRecords(agent);
+  resetRecords();
   await loadModels(agent);
 }
+
+// ---- Trend chart (dependency-free SVG stacked bars) ------------------------
+
+function renderTrend() {
+  const container = document.getElementById('trendChart');
+  const legendEl = document.getElementById('trendLegend');
+  container.innerHTML = '';
+  legendEl.innerHTML = '';
+
+  if (!dailyByAgent.length) {
+    container.innerHTML = '<div style="color: var(--text-secondary); padding: 20px;">暂无数据</div>';
+    return;
+  }
+
+  // Build date -> {agent: tokens} map limited to the selected range.
+  const allDates = [...new Set(dailyByAgent.map(r => r.date))].sort();
+  let dates = allDates;
+  if (trendRange > 0) {
+    dates = allDates.slice(-trendRange);
+  }
+  const dateSet = new Set(dates);
+
+  const agents = [...new Set(dailyByAgent.map(r => r.agent))];
+  const byDate = new Map(dates.map(d => [d, {}]));
+  for (const row of dailyByAgent) {
+    if (!dateSet.has(row.date)) continue;
+    byDate.get(row.date)[row.agent] = row.total_tokens;
+  }
+
+  const totals = dates.map(d => agents.reduce((s, a) => s + (byDate.get(d)[a] || 0), 0));
+  const maxTotal = Math.max(1, ...totals);
+
+  // Geometry
+  const H = 200;
+  const padTop = 10, padBottom = 22, padLeft = 48;
+  const barGap = 2;
+  const minBar = 6;
+  const barW = Math.max(minBar, Math.min(28, Math.floor((900 - padLeft) / dates.length) - barGap));
+  const chartW = padLeft + dates.length * (barW + barGap) + 10;
+  const chartH = H;
+  const plotH = H - padTop - padBottom;
+
+  const svgNS = 'http://www.w3.org/2000/svg';
+  const svg = document.createElementNS(svgNS, 'svg');
+  svg.setAttribute('width', chartW);
+  svg.setAttribute('height', chartH);
+  svg.setAttribute('viewBox', `0 0 ${chartW} ${chartH}`);
+
+  // Y gridlines + labels (0, mid, max)
+  [0, 0.5, 1].forEach(f => {
+    const y = padTop + plotH * (1 - f);
+    const line = document.createElementNS(svgNS, 'line');
+    line.setAttribute('x1', padLeft); line.setAttribute('x2', chartW - 10);
+    line.setAttribute('y1', y); line.setAttribute('y2', y);
+    line.setAttribute('stroke', '#3f3f46'); line.setAttribute('stroke-width', '1');
+    svg.appendChild(line);
+    const label = document.createElementNS(svgNS, 'text');
+    label.setAttribute('x', padLeft - 6); label.setAttribute('y', y + 3);
+    label.setAttribute('text-anchor', 'end');
+    label.setAttribute('fill', '#a1a1aa'); label.setAttribute('font-size', '10');
+    label.textContent = formatNumber(Math.round(maxTotal * f));
+    svg.appendChild(label);
+  });
+
+  dates.forEach((d, i) => {
+    const x = padLeft + i * (barW + barGap);
+    let yCursor = padTop + plotH;
+    const dayTotal = totals[i];
+    for (const agent of agents) {
+      const val = byDate.get(d)[agent] || 0;
+      if (val <= 0) continue;
+      const h = (val / maxTotal) * plotH;
+      yCursor -= h;
+      const rect = document.createElementNS(svgNS, 'rect');
+      rect.setAttribute('x', x);
+      rect.setAttribute('y', yCursor);
+      rect.setAttribute('width', barW);
+      rect.setAttribute('height', Math.max(0.5, h));
+      rect.setAttribute('fill', AGENT_COLORS[agent] || AGENT_COLORS.unknown);
+      rect.setAttribute('class', 'trend-bar');
+      const title = document.createElementNS(svgNS, 'title');
+      title.textContent = `${d}\n${agent}: ${formatNumber(val)}\n合计: ${formatNumber(dayTotal)}`;
+      rect.appendChild(title);
+      rect.addEventListener('click', () => filterRecordsByDate(d));
+      svg.appendChild(rect);
+    }
+    // X label every ~Nth bar to avoid clutter
+    const step = Math.ceil(dates.length / 12);
+    if (i % step === 0) {
+      const label = document.createElementNS(svgNS, 'text');
+      label.setAttribute('x', x + barW / 2);
+      label.setAttribute('y', chartH - 6);
+      label.setAttribute('text-anchor', 'middle');
+      label.setAttribute('fill', '#a1a1aa');
+      label.setAttribute('font-size', '10');
+      label.textContent = formatDate(d);
+      svg.appendChild(label);
+    }
+  });
+
+  container.appendChild(svg);
+
+  // Legend
+  for (const agent of agents) {
+    const lg = document.createElement('div');
+    lg.className = 'lg';
+    lg.innerHTML = `<span class="swatch" style="background:${AGENT_COLORS[agent] || AGENT_COLORS.unknown}"></span>${agent}`;
+    legendEl.appendChild(lg);
+  }
+}
+
+function switchRange(range) {
+  trendRange = range;
+  document.querySelectorAll('.range-tab').forEach(t => {
+    t.classList.toggle('active', Number(t.dataset.range) === range);
+  });
+  renderTrend();
+}
+
+// ---- Heatmap ---------------------------------------------------------------
 
 async function loadHeatmap(agent) {
   dailyData = await api.getDailyUsage(agent);
@@ -177,7 +344,6 @@ async function loadHeatmap(agent) {
     return;
   }
 
-  // Build date map
   const usageMap = new Map();
   const values = [];
   for (const day of dailyData) {
@@ -187,15 +353,12 @@ async function loadHeatmap(agent) {
 
   const maxValue = Math.max(...values);
 
-  // Generate last 52 weeks (always full weeks)
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
-  // End on Saturday of current week
   const endDate = new Date(today);
   endDate.setDate(endDate.getDate() + (6 - today.getDay()));
 
-  // Start 51 weeks before end date, then align to Sunday
   const startDate = new Date(endDate);
   startDate.setDate(startDate.getDate() - (52 * 7 - 1));
   startDate.setDate(startDate.getDate() - startDate.getDay());
@@ -204,8 +367,13 @@ async function loadHeatmap(agent) {
   let currentWeek = [];
   const current = new Date(startDate);
 
+  const localStr = d => {
+    const p = n => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+  };
+
   while (current <= endDate) {
-    const dateStr = current.toISOString().split('T')[0];
+    const dateStr = localStr(current);
     const total = usageMap.get(dateStr) || 0;
     currentWeek.push({ date: dateStr, total });
 
@@ -213,7 +381,6 @@ async function loadHeatmap(agent) {
       weeks.push(currentWeek);
       currentWeek = [];
     }
-
     current.setDate(current.getDate() + 1);
   }
 
@@ -236,17 +403,55 @@ async function loadHeatmap(agent) {
 
       cell.classList.add(`level-${level}`);
       cell.dataset.tooltip = `${day.date}: ${formatNumber(day.total)} tokens`;
+      if (day.total > 0) {
+        cell.addEventListener('click', () => filterRecordsByDate(day.date));
+      }
       weekEl.appendChild(cell);
     }
-
     heatmap.appendChild(weekEl);
   }
 }
 
-async function loadRecords(agent) {
-  const records = await api.getRecords({ agent, limit: 50 });
+// ---- Records (with drill-down + pagination) --------------------------------
+
+function resetRecords() {
+  recordsOffset = 0;
+  document.getElementById('recordsBody').innerHTML = '';
+  updateRecordsFilterUI();
+  loadRecords(true);
+}
+
+function filterRecordsByDate(date) {
+  recordsDate = date;
+  recordsOffset = 0;
+  document.getElementById('recordsBody').innerHTML = '';
+  updateRecordsFilterUI();
+  loadRecords(true);
+  document.querySelector('.records-section').scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function clearRecordsFilter() {
+  recordsDate = null;
+  resetRecords();
+}
+
+function updateRecordsFilterUI() {
+  const wrap = document.getElementById('recordsFilter');
+  const label = document.getElementById('recordsFilterLabel');
+  if (recordsDate) {
+    wrap.hidden = false;
+    label.textContent = `筛选：${recordsDate}`;
+  } else {
+    wrap.hidden = true;
+  }
+}
+
+async function loadRecords(reset = false) {
+  const opts = { agent: currentAgent, limit: RECORDS_PAGE, offset: recordsOffset };
+  if (recordsDate) opts.date = recordsDate;
+  const records = await api.getRecords(opts);
   const tbody = document.getElementById('recordsBody');
-  tbody.innerHTML = '';
+  if (reset) tbody.innerHTML = '';
 
   for (const record of records) {
     const row = document.createElement('tr');
@@ -258,8 +463,17 @@ async function loadRecords(agent) {
       <td>${formatNumber(record.output_tokens)}</td>
       <td>${formatNumber(record.cache_read_tokens + record.cache_creation_tokens)}</td>
       <td>${formatNumber(record.total_tokens)}</td>
+      <td class="cost-cell">${formatCost(record.cost)}</td>
     `;
     tbody.appendChild(row);
+  }
+
+  recordsOffset += records.length;
+  const loadMore = document.getElementById('loadMoreBtn');
+  loadMore.hidden = records.length < RECORDS_PAGE;
+
+  if (tbody.children.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="8" style="color: var(--text-secondary); text-align: center; padding: 20px;">暂无记录</td></tr>';
   }
 }
 
@@ -269,7 +483,7 @@ async function loadModels(agent) {
   tbody.innerHTML = '';
 
   if (models.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="7" style="color: var(--text-secondary); text-align: center; padding: 20px;">暂无模型数据</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="8" style="color: var(--text-secondary); text-align: center; padding: 20px;">暂无模型数据</td></tr>';
     return;
   }
 
@@ -283,6 +497,7 @@ async function loadModels(agent) {
       <td>${formatNumber(item.cache_read_tokens + item.cache_creation_tokens)}</td>
       <td>${formatNumber(item.total_tokens)}</td>
       <td>${formatNumber(item.records)}</td>
+      <td class="cost-cell">${formatCost(item.cost)}</td>
     `;
     tbody.appendChild(row);
   }
@@ -291,7 +506,7 @@ async function loadModels(agent) {
 async function exportData() {
   const res = await fetch('/api/export');
   if (!res.ok) {
-    alert('导出失败');
+    setStatus('导出失败', 'error');
     return;
   }
   const blob = await res.blob();
@@ -303,24 +518,32 @@ async function exportData() {
   URL.revokeObjectURL(url);
 }
 
+// Chunked base64 encode — spreading a large Uint8Array into fromCharCode
+// overflows the call stack for multi-MB DB files.
+function bytesToBase64(bytes) {
+  let binary = '';
+  const chunk = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunk) {
+    binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunk));
+  }
+  return btoa(binary);
+}
+
 async function importData(event) {
   const file = event.target.files[0];
   if (!file) return;
 
-  const status = document.getElementById('scanStatus');
-  status.textContent = '正在导入...';
-  status.className = 'scan-status';
+  setStatus('正在导入...');
 
   try {
     const arrayBuffer = await file.arrayBuffer();
-    const base64 = btoa(String.fromCharCode(...new Uint8Array(arrayBuffer)));
+    const base64 = bytesToBase64(new Uint8Array(arrayBuffer));
     const result = await api.importData(base64);
-    status.textContent = `导入完成，合并 ${result.inserted} 条记录。`;
-    status.classList.add('success');
+    if (result.error) throw new Error(result.error);
+    setStatus(`导入完成，合并 ${result.inserted} 条记录。`, 'success');
     await loadDashboard();
   } catch (err) {
-    status.textContent = '导入失败: ' + err.message;
-    status.classList.add('error');
+    setStatus('导入失败: ' + err.message, 'error');
   }
 
   event.target.value = '';
@@ -328,7 +551,13 @@ async function importData(event) {
 
 // Init
 document.getElementById('scanBtn').addEventListener('click', scanAll);
+document.getElementById('rebuildBtn').addEventListener('click', rebuild);
 document.getElementById('exportBtn').addEventListener('click', exportData);
 document.getElementById('importInput').addEventListener('change', importData);
+document.getElementById('loadMoreBtn').addEventListener('click', () => loadRecords(false));
+document.getElementById('clearFilterBtn').addEventListener('click', clearRecordsFilter);
+document.querySelectorAll('.range-tab').forEach(tab => {
+  tab.addEventListener('click', () => switchRange(Number(tab.dataset.range)));
+});
 
 loadDashboard();

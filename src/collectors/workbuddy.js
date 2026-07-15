@@ -1,7 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
-const { readJsonLines, walkDir, formatTimestamp, safeInt } = require('./utils');
+const { readJsonLines, walkDir, formatTimestamp, safeInt, fileUnchanged, markFile } = require('./utils');
 
 const WORKBUDDY_DIR = path.join(os.homedir(), '.workbuddy');
 
@@ -12,6 +12,8 @@ function collect() {
   // Trace-level summaries
   const traceFiles = walkDir(path.join(WORKBUDDY_DIR, 'traces'), /^trace_.*\.json$/);
   for (const file of traceFiles) {
+    if (fileUnchanged(file)) continue;
+    markFile(file);
     let data;
     try {
       data = JSON.parse(fs.readFileSync(file, 'utf8'));
@@ -24,8 +26,10 @@ function collect() {
     const totalTokens = safeInt(trace.totalTokens || modelInfo.totalTokens);
     if (totalTokens === 0) continue;
 
-    const stats = fs.statSync(file);
-    const timestamp = formatTimestamp(stats.mtime);
+    // Prefer the trace's own start time so re-scans stay idempotent (mtime
+    // changes on rewrite would create duplicate rows and inflate totals).
+    const timestamp = formatTimestamp(trace.startedAt || trace.endedAt) ||
+      formatTimestamp(fs.statSync(file).mtime);
 
     records.push({
       agent: 'workbuddy',
@@ -45,7 +49,9 @@ function collect() {
   // Project session details
   const projectFiles = walkDir(path.join(WORKBUDDY_DIR, 'projects'), /^.*\.jsonl$/);
   for (const file of projectFiles) {
+    if (fileUnchanged(file)) continue;
     const lines = readJsonLines(file);
+    markFile(file);
     const sessionId = path.basename(file, '.jsonl');
 
     for (const line of lines) {

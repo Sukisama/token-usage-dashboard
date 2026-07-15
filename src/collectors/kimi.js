@@ -1,7 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
-const { readJsonLines, walkDir, formatTimestamp, safeInt } = require('./utils');
+const { readJsonLines, walkDir, formatTimestamp, safeInt, fileUnchanged, markFile } = require('./utils');
 
 const KIMI_DIR = path.join(os.homedir(), '.kimi-code', 'sessions');
 
@@ -12,7 +12,9 @@ function collect() {
   const files = walkDir(KIMI_DIR, /^wire\.jsonl$/);
 
   for (const file of files) {
+    if (fileUnchanged(file)) continue;
     const lines = readJsonLines(file);
+    markFile(file);
     const parts = file.split(path.sep);
     const sessionIdx = parts.indexOf('session_');
     const sessionId = sessionIdx > 0 ? parts[sessionIdx] + '_' + parts[sessionIdx + 1] : path.basename(path.dirname(file));

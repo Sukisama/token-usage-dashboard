@@ -135,9 +135,13 @@ body {
 /* Summary cards */
 .summary {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(6, 1fr);
   gap: 16px;
   margin-bottom: 24px;
+}
+
+.card-value.cost {
+  color: var(--brand-light);
 }
 
 .card {
@@ -427,7 +431,118 @@ body {
   background: var(--text-secondary);
 }
 
+/* Trend chart */
+.trend-section {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 20px;
+  margin-bottom: 24px;
+  box-shadow: var(--shadow);
+}
+
+.range-tabs {
+  display: flex;
+  gap: 6px;
+}
+
+.range-tab {
+  padding: 5px 12px;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: var(--surface-2);
+  color: var(--text-secondary);
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.range-tab:hover { color: var(--text); border-color: var(--brand); }
+.range-tab.active {
+  background: var(--brand);
+  border-color: var(--brand);
+  color: white;
+}
+
+.trend-wrapper {
+  overflow-x: auto;
+  padding-top: 8px;
+}
+
+.trend-chart svg { display: block; }
+
+.trend-bar { cursor: pointer; transition: opacity 0.1s; }
+.trend-bar:hover { opacity: 0.75; }
+
+.trend-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  margin-top: 12px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.trend-legend .lg {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.trend-legend .swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+}
+
+/* Records filter + pagination */
+.records-filter {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--brand-light);
+}
+
+.link-btn {
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 12px;
+  text-decoration: underline;
+}
+
+.link-btn:hover { color: var(--brand-light); }
+
+.load-more-wrap {
+  display: flex;
+  justify-content: center;
+  margin-top: 16px;
+}
+
+.hint {
+  margin-top: 12px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.hint code {
+  background: var(--surface-2);
+  padding: 1px 5px;
+  border-radius: 4px;
+  font-size: 11px;
+}
+
+.cost-cell { color: var(--brand-light); }
+
 /* Responsive */
+@media (max-width: 1100px) {
+  .summary {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
 @media (max-width: 900px) {
   .summary {
     grid-template-columns: repeat(2, 1fr);

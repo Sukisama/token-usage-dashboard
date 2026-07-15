@@ -1,7 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
-const { readJsonLines, walkDir, formatTimestamp, safeInt } = require('./utils');
+const { readJsonLines, walkDir, formatTimestamp, safeInt, fileUnchanged, markFile } = require('./utils');
 
 const CLAUDE_DIR = path.join(os.homedir(), '.claude', 'projects');
 
@@ -12,7 +12,9 @@ function collect() {
   const files = walkDir(CLAUDE_DIR, /^.*\.jsonl$/);
 
   for (const file of files) {
+    if (fileUnchanged(file)) continue;
     const lines = readJsonLines(file);
+    markFile(file);
     const sessionId = path.basename(file, '.jsonl');
 
     for (const line of lines) {

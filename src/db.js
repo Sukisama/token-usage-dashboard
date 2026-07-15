@@ -2,12 +2,19 @@ const initSqlJs = require('sql.js/dist/sql-wasm.js');
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
+const pricing = require('./pricing');
 
 const DB_DIR = path.join(os.homedir(), '.token-usage-dashboard');
 const DB_PATH = path.join(DB_DIR, 'usage.db');
 
 let SQL;
 let db;
+
+// Local (not UTC) YYYY-MM-DD, matching SQLite's date(ts,'localtime') grouping.
+function localDateStr(d = new Date()) {
+  const p = n => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+}
 
 async function init() {
   SQL = await initSqlJs();
@@ -43,7 +50,7 @@ async function init() {
 
     CREATE INDEX IF NOT EXISTS idx_agent ON usage_records(agent);
     CREATE INDEX IF NOT EXISTS idx_timestamp ON usage_records(timestamp);
-    CREATE INDEX IF NOT EXISTS idx_date ON usage_records(date(timestamp));
+    CREATE INDEX IF NOT EXISTS idx_date ON usage_records(date(timestamp, 'localtime'));
   `);
 
   save();
@@ -91,6 +98,11 @@ function insertUsageRecords(records) {
   return count;
 }
 
+function clearAll() {
+  db.exec('DELETE FROM usage_records;');
+  save();
+}
+
 function query(sql, params = []) {
   const stmt = db.prepare(sql);
   stmt.bind(params);
@@ -112,7 +124,7 @@ function getSummary() {
       COALESCE(SUM(reasoning_tokens), 0) as reasoning_tokens,
       COALESCE(SUM(total_tokens), 0) as total_tokens,
       COUNT(*) as records,
-      COUNT(DISTINCT date(timestamp)) as days
+      COUNT(DISTINCT date(timestamp, 'localtime')) as days
     FROM usage_records
   `)[0];
 
@@ -123,23 +135,71 @@ function getSummary() {
       COALESCE(SUM(output_tokens), 0) as output_tokens,
       COALESCE(SUM(total_tokens), 0) as total_tokens,
       COUNT(*) as records,
-      COUNT(DISTINCT date(timestamp)) as days,
-      MAX(date(timestamp)) as last_used
+      COUNT(DISTINCT date(timestamp, 'localtime')) as days,
+      MAX(date(timestamp, 'localtime')) as last_used
     FROM usage_records
     GROUP BY agent
     ORDER BY total_tokens DESC
   `);
 
-  const today = new Date().toISOString().split('T')[0];
+  const today = localDateStr();
   const todayUsage = query(`
     SELECT agent, COALESCE(SUM(total_tokens), 0) as total_tokens
     FROM usage_records
-    WHERE date(timestamp) = ?
+    WHERE date(timestamp, 'localtime') = ?
     GROUP BY agent
     ORDER BY total_tokens DESC
   `, [today]);
 
-  return { overall, byAgent, today: todayUsage };
+  // Cost is derived per (agent, model) then aggregated, because pricing is
+  // model-specific. Unknown models contribute null (skipped, not zeroed).
+  const agentModel = query(`
+    SELECT agent, model,
+      COALESCE(SUM(input_tokens), 0) as input_tokens,
+      COALESCE(SUM(output_tokens), 0) as output_tokens,
+      COALESCE(SUM(cache_read_tokens), 0) as cache_read_tokens,
+      COALESCE(SUM(cache_creation_tokens), 0) as cache_creation_tokens
+    FROM usage_records
+    GROUP BY agent, model
+  `);
+  let totalCost = 0;
+  let hasPricedRow = false;
+  const costByAgent = {};
+  for (const r of agentModel) {
+    const c = pricing.costOf(r);
+    if (c == null) continue;
+    hasPricedRow = true;
+    totalCost += c;
+    costByAgent[r.agent] = (costByAgent[r.agent] || 0) + c;
+  }
+  overall.cost = hasPricedRow ? totalCost : null;
+  for (const a of byAgent) a.cost = costByAgent[a.agent] != null ? costByAgent[a.agent] : null;
+
+  const todayModel = query(`
+    SELECT agent, model,
+      COALESCE(SUM(input_tokens), 0) as input_tokens,
+      COALESCE(SUM(output_tokens), 0) as output_tokens,
+      COALESCE(SUM(cache_read_tokens), 0) as cache_read_tokens,
+      COALESCE(SUM(cache_creation_tokens), 0) as cache_creation_tokens
+    FROM usage_records
+    WHERE date(timestamp, 'localtime') = ?
+    GROUP BY agent, model
+  `, [today]);
+  let todayCost = 0;
+  let todayPriced = false;
+  for (const r of todayModel) {
+    const c = pricing.costOf(r);
+    if (c == null) continue;
+    todayPriced = true;
+    todayCost += c;
+  }
+
+  return {
+    overall,
+    byAgent,
+    today: todayUsage,
+    todayCost: todayPriced ? todayCost : null
+  };
 }
 
 function getDailyUsage(agent) {
@@ -149,7 +209,7 @@ function getDailyUsage(agent) {
   if (agent && agent !== 'all') {
     sql = `
       SELECT
-        date(timestamp) as date,
+        date(timestamp, 'localtime') as date,
         COALESCE(SUM(input_tokens), 0) as input_tokens,
         COALESCE(SUM(output_tokens), 0) as output_tokens,
         COALESCE(SUM(cache_read_tokens), 0) as cache_read_tokens,
@@ -159,14 +219,14 @@ function getDailyUsage(agent) {
         COUNT(*) as records
       FROM usage_records
       WHERE agent = ?
-      GROUP BY date(timestamp)
-      ORDER BY date(timestamp) DESC
+      GROUP BY date(timestamp, 'localtime')
+      ORDER BY date(timestamp, 'localtime') DESC
     `;
     params = [agent];
   } else {
     sql = `
       SELECT
-        date(timestamp) as date,
+        date(timestamp, 'localtime') as date,
         COALESCE(SUM(input_tokens), 0) as input_tokens,
         COALESCE(SUM(output_tokens), 0) as output_tokens,
         COALESCE(SUM(cache_read_tokens), 0) as cache_read_tokens,
@@ -175,12 +235,25 @@ function getDailyUsage(agent) {
         COALESCE(SUM(total_tokens), 0) as total_tokens,
         COUNT(*) as records
       FROM usage_records
-      GROUP BY date(timestamp)
-      ORDER BY date(timestamp) DESC
+      GROUP BY date(timestamp, 'localtime')
+      ORDER BY date(timestamp, 'localtime') DESC
     `;
   }
 
   return query(sql, params);
+}
+
+// Per-day, per-agent totals for the stacked trend chart.
+function getDailyByAgent() {
+  return query(`
+    SELECT
+      date(timestamp, 'localtime') as date,
+      agent,
+      COALESCE(SUM(total_tokens), 0) as total_tokens
+    FROM usage_records
+    GROUP BY date(timestamp, 'localtime'), agent
+    ORDER BY date(timestamp, 'localtime') ASC
+  `);
 }
 
 function getAgents() {
@@ -229,7 +302,9 @@ function getModelUsage(agent) {
     `;
   }
 
-  return query(sql, params);
+  const rows = query(sql, params);
+  for (const r of rows) r.cost = pricing.costOf(r);
+  return rows;
 }
 
 function importFromBuffer(buffer) {
@@ -251,36 +326,39 @@ function importFromBuffer(buffer) {
   return insertUsageRecords(records);
 }
 
-function getRecords({ agent, limit = 100, offset = 0 }) {
-  let sql;
-  let params = [];
-
+function getRecords({ agent, date, limit = 100, offset = 0 }) {
+  const where = [];
+  const params = [];
   if (agent && agent !== 'all') {
-    sql = `
-      SELECT * FROM usage_records
-      WHERE agent = ?
-      ORDER BY timestamp DESC
-      LIMIT ? OFFSET ?
-    `;
-    params = [agent, limit, offset];
-  } else {
-    sql = `
-      SELECT * FROM usage_records
-      ORDER BY timestamp DESC
-      LIMIT ? OFFSET ?
-    `;
-    params = [limit, offset];
+    where.push('agent = ?');
+    params.push(agent);
   }
+  if (date) {
+    where.push("date(timestamp, 'localtime') = ?");
+    params.push(date);
+  }
+  const clause = where.length ? `WHERE ${where.join(' AND ')}` : '';
+  const sql = `
+    SELECT * FROM usage_records
+    ${clause}
+    ORDER BY timestamp DESC
+    LIMIT ? OFFSET ?
+  `;
+  params.push(limit, offset);
 
-  return query(sql, params);
+  const rows = query(sql, params);
+  for (const r of rows) r.cost = pricing.costOf(r);
+  return rows;
 }
 
 module.exports = {
   init,
   insertUsageRecords,
   importFromBuffer,
+  clearAll,
   getSummary,
   getDailyUsage,
+  getDailyByAgent,
   getAgents,
   getModelUsage,
   getRecords

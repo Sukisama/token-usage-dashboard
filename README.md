@@ -68,6 +68,19 @@ To bind a hotkey:
 2. Add `LizhiTokenUsage.app` and assign your preferred shortcut
 3. Or use Raycast / Alfred to bind `scripts/launch.sh`
 
+### Option D: Always-Running Background Service (macOS)
+
+Use launchd to keep the server running in the background:
+
+```bash
+cp scripts/com.token-usage-dashboard.server.plist ~/Library/LaunchAgents/
+# Replace {USER_HOME} with your actual home path, e.g. /Users/doris
+sed -i '' "s|{USER_HOME}|$HOME|g" ~/Library/LaunchAgents/com.token-usage-dashboard.server.plist
+launchctl load ~/Library/LaunchAgents/com.token-usage-dashboard.server.plist
+```
+
+The service will auto-start on login and restart if it crashes. Access the dashboard at `http://localhost:7373`.
+
 ## Data Storage
 
 Usage data is stored locally in `~/.token-usage-dashboard/usage.db` (SQLite). No data is sent to any server.

@@ -4,6 +4,7 @@ const path = require('path');
 const { exec } = require('child_process');
 const db = require('./src/db');
 const collectors = require('./src/collectors');
+const { flushCache, resetCache } = require('./src/collectors/utils');
 
 const PORT = 7373;
 const SRC_DIR = path.join(__dirname, 'src');
@@ -30,11 +31,22 @@ async function scanAll() {
       results.push({ agent: name, found: 0, inserted: 0, error: err.message });
     }
   }
+  // Persist the incremental-scan mtime cache after a full pass.
+  flushCache();
   return results;
 }
 
 function serveStatic(req, res) {
-  let filePath = path.join(SRC_DIR, req.url === '/' ? 'index.html' : req.url);
+  const urlPath = decodeURIComponent((req.url === '/' ? '/index.html' : req.url).split('?')[0]);
+  let filePath = path.normalize(path.join(SRC_DIR, urlPath));
+
+  // Prevent path traversal (e.g. /../server.js) escaping the static root.
+  if (filePath !== SRC_DIR && !filePath.startsWith(SRC_DIR + path.sep)) {
+    res.writeHead(403, { 'Content-Type': 'text/plain' });
+    res.end('Forbidden');
+    return;
+  }
+
   if (fs.existsSync(filePath) && fs.statSync(filePath).isDirectory()) {
     filePath = path.join(filePath, 'index.html');
   }
@@ -77,8 +89,18 @@ async function handleApi(req, res) {
     if (req.url === '/api/scan') {
       const results = await scanAll();
       sendJson(res, results);
+    } else if (req.url === '/api/rebuild' && req.method === 'POST') {
+      // Wipe rows + incremental cache, then re-parse everything from scratch.
+      // Needed after a collector fix so corrected model/timestamps replace the
+      // old rows that INSERT OR IGNORE would otherwise keep.
+      db.clearAll();
+      resetCache();
+      const results = await scanAll();
+      sendJson(res, results);
     } else if (req.url === '/api/summary') {
       sendJson(res, db.getSummary());
+    } else if (req.url.startsWith('/api/daily-agents')) {
+      sendJson(res, db.getDailyByAgent());
     } else if (req.url.startsWith('/api/daily')) {
       const url = new URL(req.url, `http://localhost:${PORT}`);
       const agent = url.searchParams.get('agent') || 'all';
@@ -88,9 +110,10 @@ async function handleApi(req, res) {
     } else if (req.url.startsWith('/api/records')) {
       const url = new URL(req.url, `http://localhost:${PORT}`);
       const agent = url.searchParams.get('agent') || 'all';
+      const date = url.searchParams.get('date') || null;
       const limit = parseInt(url.searchParams.get('limit') || '50', 10);
       const offset = parseInt(url.searchParams.get('offset') || '0', 10);
-      sendJson(res, db.getRecords({ agent, limit, offset }));
+      sendJson(res, db.getRecords({ agent, date, limit, offset }));
     } else if (req.url.startsWith('/api/models')) {
       const url = new URL(req.url, `http://localhost:${PORT}`);
       const agent = url.searchParams.get('agent') || 'all';
@@ -126,7 +149,12 @@ async function handleApi(req, res) {
 }
 
 const server = http.createServer(async (req, res) => {
-  res.setHeader('Access-Control-Allow-Origin', '*');
+  // This server exposes your local token logs. Only allow the dashboard's own
+  // origin so a random web page you visit can't read localhost:7373.
+  const origin = req.headers.origin;
+  if (origin === `http://localhost:${PORT}` || origin === `http://127.0.0.1:${PORT}`) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+  }
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 

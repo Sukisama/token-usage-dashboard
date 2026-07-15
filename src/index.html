@@ -19,6 +19,7 @@
           导入数据
           <input type="file" id="importInput" accept=".db" hidden>
         </label>
+        <button id="rebuildBtn" class="secondary-btn" title="清空并从日志重新计算（修正历史数据后使用）">重建</button>
         <button id="scanBtn" class="scan-btn">
           <span class="icon">↻</span> 扫描日志
         </button>
@@ -33,8 +34,16 @@
         <div class="card-value" id="totalTokens">-</div>
       </div>
       <div class="card">
+        <div class="card-label">累计花费 ≈</div>
+        <div class="card-value cost" id="totalCost">-</div>
+      </div>
+      <div class="card">
         <div class="card-label">今日 Token</div>
         <div class="card-value" id="todayTokens">-</div>
+      </div>
+      <div class="card">
+        <div class="card-label">今日花费 ≈</div>
+        <div class="card-value cost" id="todayCost">-</div>
       </div>
       <div class="card">
         <div class="card-label">活跃 Agent</div>
@@ -50,6 +59,22 @@
       <div class="agent-tabs" id="agentTabs">
         <button class="tab active" data-agent="all">全部</button>
       </div>
+    </section>
+
+    <section class="trend-section">
+      <div class="section-header">
+        <h2>用量趋势</h2>
+        <div class="range-tabs" id="rangeTabs">
+          <button class="range-tab" data-range="7">近 7 天</button>
+          <button class="range-tab active" data-range="30">近 30 天</button>
+          <button class="range-tab" data-range="90">近 90 天</button>
+          <button class="range-tab" data-range="0">全部</button>
+        </div>
+      </div>
+      <div class="trend-wrapper">
+        <div id="trendChart" class="trend-chart"></div>
+      </div>
+      <div class="trend-legend" id="trendLegend"></div>
     </section>
 
     <section class="heatmap-section">
@@ -89,14 +114,22 @@
             <th>Cache</th>
             <th>Total</th>
             <th>记录数</th>
+            <th>花费 ≈</th>
           </tr>
         </thead>
         <tbody id="modelsBody"></tbody>
       </table>
+      <p class="hint">花费为估算，按模型价目表 <code>src/pricing.js</code> 计算，未知模型不计。</p>
     </section>
 
     <section class="records-section">
-      <h2>最近记录</h2>
+      <div class="section-header">
+        <h2>最近记录</h2>
+        <div class="records-filter" id="recordsFilter" hidden>
+          <span id="recordsFilterLabel"></span>
+          <button id="clearFilterBtn" class="link-btn">清除</button>
+        </div>
+      </div>
       <table class="records-table">
         <thead>
           <tr>
@@ -107,10 +140,14 @@
             <th>Output</th>
             <th>Cache</th>
             <th>Total</th>
+            <th>花费 ≈</th>
           </tr>
         </thead>
         <tbody id="recordsBody"></tbody>
       </table>
+      <div class="load-more-wrap">
+        <button id="loadMoreBtn" class="secondary-btn" hidden>加载更多</button>
+      </div>
     </section>
   </div>
 
