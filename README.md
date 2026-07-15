@@ -10,7 +10,8 @@ A local dashboard that aggregates LLM token usage across multiple AI coding agen
 - 📊 Daily heatmap (GitHub-style contribution graph)
 - 🤖 Per-agent and per-model breakdown
 - 🌙 Dark theme with orange accent
-- 💻 Desktop mode with global hotkey (Electron)
+- 💻 Desktop floating widget showing today's usage
+- ⌨️ Global hotkey support (Electron)
 
 ## Supported Agents
 
@@ -26,7 +27,7 @@ A local dashboard that aggregates LLM token usage across multiple AI coding agen
 
 ```bash
 git clone https://github.com/Sukisama/token-usage-dashboard.git
-cd lizhi-token-usage-dashboard
+cd token-usage-dashboard
 npm install
 npm start
 ```
@@ -47,9 +48,19 @@ Default global hotkey:
 - macOS: `Cmd + Shift + T`
 - Windows/Linux: `Ctrl + Shift + T`
 
-### Option B: macOS Quick Launcher
+### Option B: macOS Floating Widget
 
-Double-click `scripts/LizhiTokenUsage.app` to start the server and open the dashboard.
+Double-click `scripts/LizhiTokenWidget.app` to open a small floating widget that shows today's token usage. Click it to open the full dashboard. Right-click to quit.
+
+You can also run it directly:
+
+```bash
+python3 scripts/desktop-widget.py
+```
+
+### Option C: macOS Quick Launcher
+
+Double-click `scripts/LizhiTokenUsage.app` to start the server and open the dashboard in browser.
 
 To bind a hotkey:
 

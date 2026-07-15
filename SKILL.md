@@ -23,6 +23,8 @@ npm install
 
 - `npm start` — 启动本地服务并在浏览器打开看板
 - `npm run electron` — 启动桌面版（需先 `npm install electron --save-dev`）
+- `python3 scripts/desktop-widget.py` — 启动桌面悬浮小部件
+- 双击 `scripts/LizhiTokenWidget.app` 启动 macOS 桌面悬浮球
 
 ## Project location
 
