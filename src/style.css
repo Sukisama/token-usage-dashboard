@@ -284,25 +284,25 @@ body {
 .day-cell.level-3 { background: #ea580c; }
 .day-cell.level-4 { background: #f97316; }
 
-.day-cell::after {
-  content: attr(data-tooltip);
-  position: absolute;
-  bottom: 120%;
-  left: 50%;
-  transform: translateX(-50%);
+/* Heatmap tooltip: rendered on <body> (position:fixed) so it is never clipped
+   by the wrapper's overflow. */
+.hm-tooltip {
+  position: fixed;
   padding: 6px 10px;
   background: var(--surface-2);
   border: 1px solid var(--border);
   border-radius: 6px;
   font-size: 11px;
   white-space: nowrap;
-  opacity: 0;
+  color: var(--text);
   pointer-events: none;
-  transition: opacity 0.2s;
-  z-index: 10;
+  opacity: 0;
+  transform: translate(-50%, -100%);
+  transition: opacity 0.12s;
+  z-index: 1000;
 }
 
-.day-cell:hover::after {
+.hm-tooltip.show {
   opacity: 1;
 }
 

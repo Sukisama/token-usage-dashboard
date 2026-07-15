@@ -245,13 +245,14 @@ function renderTrend() {
   const totals = dates.map(d => agents.reduce((s, a) => s + (byDate.get(d)[a] || 0), 0));
   const maxTotal = Math.max(1, ...totals);
 
-  // Geometry
+  // Geometry — fill the full container width (no dead space on the right).
   const H = 200;
-  const padTop = 10, padBottom = 22, padLeft = 48;
-  const barGap = 2;
-  const minBar = 6;
-  const barW = Math.max(minBar, Math.min(28, Math.floor((900 - padLeft) / dates.length) - barGap));
-  const chartW = padLeft + dates.length * (barW + barGap) + 10;
+  const padTop = 10, padBottom = 22, padLeft = 48, padRight = 10;
+  const availW = Math.max(320, container.clientWidth || 900);
+  const slot = (availW - padLeft - padRight) / dates.length;
+  const barGap = Math.min(6, Math.max(1, slot * 0.18));
+  const barW = Math.max(2, slot - barGap);
+  const chartW = availW;
   const chartH = H;
   const plotH = H - padTop - padBottom;
 
@@ -278,7 +279,7 @@ function renderTrend() {
   });
 
   dates.forEach((d, i) => {
-    const x = padLeft + i * (barW + barGap);
+    const x = padLeft + i * slot + (slot - barW) / 2;
     let yCursor = padTop + plotH;
     const dayTotal = totals[i];
     for (const agent of agents) {
@@ -334,12 +335,36 @@ function switchRange(range) {
 
 // ---- Heatmap ---------------------------------------------------------------
 
+let _hmTooltip = null;
+function showHeatmapTooltip(cell, text) {
+  if (!_hmTooltip) {
+    _hmTooltip = document.createElement('div');
+    _hmTooltip.className = 'hm-tooltip';
+    document.body.appendChild(_hmTooltip);
+  }
+  _hmTooltip.textContent = text;
+  const r = cell.getBoundingClientRect();
+  // Prefer above the cell; flip below if it would go off the top of the viewport.
+  const above = r.top > 40;
+  _hmTooltip.style.left = `${r.left + r.width / 2}px`;
+  _hmTooltip.style.top = above ? `${r.top - 6}px` : `${r.bottom + 6}px`;
+  _hmTooltip.style.transform = above ? 'translate(-50%, -100%)' : 'translate(-50%, 0)';
+  _hmTooltip.classList.add('show');
+}
+function hideHeatmapTooltip() {
+  if (_hmTooltip) _hmTooltip.classList.remove('show');
+}
+
 async function loadHeatmap(agent) {
   dailyData = await api.getDailyUsage(agent);
+  renderHeatmap();
+}
+
+function renderHeatmap() {
   const heatmap = document.getElementById('heatmap');
   heatmap.innerHTML = '';
 
-  if (dailyData.length === 0) {
+  if (!dailyData || dailyData.length === 0) {
     heatmap.innerHTML = '<div style="color: var(--text-secondary); padding: 20px;">暂无数据</div>';
     return;
   }
@@ -384,6 +409,12 @@ async function loadHeatmap(agent) {
     current.setDate(current.getDate() + 1);
   }
 
+  // Size cells to fill the card width (no dead space on the right).
+  const gap = 4;
+  const wrapW = (document.querySelector('.heatmap-wrapper')?.clientWidth) || 900;
+  const cellSize = Math.max(11, Math.min(22,
+    Math.floor((wrapW - (weeks.length - 1) * gap) / weeks.length)));
+
   for (const week of weeks) {
     const weekEl = document.createElement('div');
     weekEl.className = 'week';
@@ -391,6 +422,7 @@ async function loadHeatmap(agent) {
     for (const day of week) {
       const cell = document.createElement('div');
       cell.className = 'day-cell';
+      cell.style.width = cell.style.height = `${cellSize}px`;
 
       let level = 0;
       if (day.total > 0) {
@@ -402,7 +434,9 @@ async function loadHeatmap(agent) {
       }
 
       cell.classList.add(`level-${level}`);
-      cell.dataset.tooltip = `${day.date}: ${formatNumber(day.total)} tokens`;
+      const tip = `${day.date}: ${formatNumber(day.total)} tokens`;
+      cell.addEventListener('mouseenter', () => showHeatmapTooltip(cell, tip));
+      cell.addEventListener('mouseleave', hideHeatmapTooltip);
       if (day.total > 0) {
         cell.addEventListener('click', () => filterRecordsByDate(day.date));
       }
@@ -558,6 +592,12 @@ document.getElementById('loadMoreBtn').addEventListener('click', () => loadRecor
 document.getElementById('clearFilterBtn').addEventListener('click', clearRecordsFilter);
 document.querySelectorAll('.range-tab').forEach(tab => {
   tab.addEventListener('click', () => switchRange(Number(tab.dataset.range)));
+});
+
+let _resizeTimer = null;
+window.addEventListener('resize', () => {
+  clearTimeout(_resizeTimer);
+  _resizeTimer = setTimeout(() => { renderTrend(); renderHeatmap(); }, 150);
 });
 
 loadDashboard();
