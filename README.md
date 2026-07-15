@@ -25,7 +25,7 @@ A local dashboard that aggregates LLM token usage across multiple AI coding agen
 ## Quick Start
 
 ```bash
-git clone https://github.com/doris/lizhi-token-usage-dashboard.git
+git clone https://github.com/Sukisama/lizhi-token-usage-dashboard.git
 cd lizhi-token-usage-dashboard
 npm install
 npm start
