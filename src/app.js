@@ -37,12 +37,12 @@ const api = {
     const res = await fetch(`/api/daily?agent=${encodeURIComponent(agent)}`);
     return res.json();
   },
-  async getDailyByAgent() {
-    const res = await fetch('/api/daily-agents');
+  async getDailyByAgent(agent = 'all') {
+    const res = await fetch(`/api/daily-agents?agent=${encodeURIComponent(agent)}`);
     return res.json();
   },
-  async getDailyByModel() {
-    const res = await fetch('/api/daily-models');
+  async getDailyByModel(agent = 'all') {
+    const res = await fetch(`/api/daily-models?agent=${encodeURIComponent(agent)}`);
     return res.json();
   },
   async getAgents() {
@@ -84,6 +84,14 @@ function formatNumber(num) {
   if (num >= 1000000) return (num / 1000000).toFixed(1) + 'M';
   if (num >= 1000) return (num / 1000).toFixed(1) + 'K';
   return num.toString();
+}
+
+// Escape values interpolated into innerHTML — model names like "<synthetic>"
+// would otherwise be parsed as HTML tags and vanish.
+function esc(s) {
+  return String(s == null ? '' : s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
 }
 
 function formatCost(usd) {
@@ -159,16 +167,21 @@ function reportScan(results, prefix = '扫描完成') {
 
 async function loadDashboard() {
   summaryData = await api.getSummary();
-  dailyByAgent = await api.getDailyByAgent();
-  dailyByModel = await api.getDailyByModel();
-  buildModelColors(dailyByModel);
   renderSummary(summaryData);
   renderAgentTabs(summaryData.byAgent);
   renderAgentList(summaryData.byAgent);
-  renderTrend();
+  await loadTrend(currentAgent);
   await loadHeatmap(currentAgent);
   resetRecords();
   await loadModels(currentAgent);
+}
+
+// Trend data follows the global agent filter (the top tabs).
+async function loadTrend(agent) {
+  dailyByAgent = await api.getDailyByAgent(agent);
+  dailyByModel = await api.getDailyByModel(agent);
+  buildModelColors(dailyByModel);
+  renderTrend();
 }
 
 function renderSummary(data) {
@@ -230,6 +243,7 @@ function renderAgentList(agents) {
 async function switchAgent(agent) {
   currentAgent = agent;
   renderAgentTabs(summaryData.byAgent);
+  await loadTrend(agent);
   await loadHeatmap(agent);
   resetRecords();
   await loadModels(agent);
@@ -364,7 +378,7 @@ function renderTrend() {
   for (const k of series) {
     const lg = document.createElement('div');
     lg.className = 'lg';
-    lg.innerHTML = `<span class="swatch" style="background:${colorOf(k)}"></span>${k}`;
+    lg.innerHTML = `<span class="swatch" style="background:${colorOf(k)}"></span>${esc(k)}`;
     legendEl.appendChild(lg);
   }
 }
@@ -542,8 +556,9 @@ async function loadRecords(reset = false) {
     const row = document.createElement('tr');
     row.innerHTML = `
       <td>${formatDateTime(record.timestamp)}</td>
-      <td>${record.agent}</td>
-      <td>${record.model || '—'}</td>
+      <td>${esc(record.agent)}</td>
+      <td>${esc(record.model) || '—'}</td>
+      <td>${record.requests > 1 ? '×' + record.requests : '1'}</td>
       <td>${formatNumber(record.input_tokens)}</td>
       <td>${formatNumber(record.output_tokens)}</td>
       <td>${formatNumber(record.cache_read_tokens + record.cache_creation_tokens)}</td>
@@ -558,7 +573,7 @@ async function loadRecords(reset = false) {
   loadMore.hidden = records.length < RECORDS_PAGE;
 
   if (tbody.children.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="8" style="color: var(--text-secondary); text-align: center; padding: 20px;">暂无记录</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="9" style="color: var(--text-secondary); text-align: center; padding: 20px;">暂无记录</td></tr>';
   }
 }
 
@@ -575,8 +590,8 @@ async function loadModels(agent) {
   for (const item of models) {
     const row = document.createElement('tr');
     row.innerHTML = `
-      <td>${item.agent || '—'}</td>
-      <td>${item.model || '—'}</td>
+      <td>${esc(item.agent) || '—'}</td>
+      <td>${esc(item.model) || '—'}</td>
       <td>${formatNumber(item.input_tokens)}</td>
       <td>${formatNumber(item.output_tokens)}</td>
       <td>${formatNumber(item.cache_read_tokens + item.cache_creation_tokens)}</td>

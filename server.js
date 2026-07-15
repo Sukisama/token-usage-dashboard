@@ -100,9 +100,11 @@ async function handleApi(req, res) {
     } else if (req.url === '/api/summary') {
       sendJson(res, db.getSummary());
     } else if (req.url.startsWith('/api/daily-agents')) {
-      sendJson(res, db.getDailyByAgent());
+      const url = new URL(req.url, `http://localhost:${PORT}`);
+      sendJson(res, db.getDailyByAgent(url.searchParams.get('agent') || 'all'));
     } else if (req.url.startsWith('/api/daily-models')) {
-      sendJson(res, db.getDailyByModel());
+      const url = new URL(req.url, `http://localhost:${PORT}`);
+      sendJson(res, db.getDailyByModel(url.searchParams.get('agent') || 'all'));
     } else if (req.url.startsWith('/api/daily')) {
       const url = new URL(req.url, `http://localhost:${PORT}`);
       const agent = url.searchParams.get('agent') || 'all';

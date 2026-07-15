@@ -243,30 +243,35 @@ function getDailyUsage(agent) {
   return query(sql, params);
 }
 
-// Per-day, per-agent totals for the stacked trend chart.
-function getDailyByAgent() {
+// Per-day, per-agent totals for the stacked trend chart (optionally scoped
+// to one agent via the global filter).
+function getDailyByAgent(agent) {
+  const scoped = agent && agent !== 'all';
   return query(`
     SELECT
       date(timestamp, 'localtime') as date,
       agent,
       COALESCE(SUM(total_tokens), 0) as total_tokens
     FROM usage_records
+    ${scoped ? 'WHERE agent = ?' : ''}
     GROUP BY date(timestamp, 'localtime'), agent
     ORDER BY date(timestamp, 'localtime') ASC
-  `);
+  `, scoped ? [agent] : []);
 }
 
 // Per-day, per-model totals for the stacked trend chart (model dimension).
-function getDailyByModel() {
+function getDailyByModel(agent) {
+  const scoped = agent && agent !== 'all';
   return query(`
     SELECT
       date(timestamp, 'localtime') as date,
       COALESCE(NULLIF(model, ''), 'unknown') as model,
       COALESCE(SUM(total_tokens), 0) as total_tokens
     FROM usage_records
+    ${scoped ? 'WHERE agent = ?' : ''}
     GROUP BY date(timestamp, 'localtime'), model
     ORDER BY date(timestamp, 'localtime') ASC
-  `);
+  `, scoped ? [agent] : []);
 }
 
 function getAgents() {
@@ -339,6 +344,9 @@ function importFromBuffer(buffer) {
   return insertUsageRecords(records);
 }
 
+// Records are collapsed so repeated calls in the same session, same model and
+// same hour show as one archived row (with a request count) instead of one row
+// per API call.
 function getRecords({ agent, date, limit = 100, offset = 0 }) {
   const where = [];
   const params = [];
@@ -352,9 +360,21 @@ function getRecords({ agent, date, limit = 100, offset = 0 }) {
   }
   const clause = where.length ? `WHERE ${where.join(' AND ')}` : '';
   const sql = `
-    SELECT * FROM usage_records
+    SELECT
+      agent,
+      session_id,
+      COALESCE(NULLIF(model, ''), 'unknown') as model,
+      MAX(timestamp) as timestamp,
+      SUM(input_tokens) as input_tokens,
+      SUM(output_tokens) as output_tokens,
+      SUM(cache_read_tokens) as cache_read_tokens,
+      SUM(cache_creation_tokens) as cache_creation_tokens,
+      SUM(total_tokens) as total_tokens,
+      COUNT(*) as requests
+    FROM usage_records
     ${clause}
-    ORDER BY timestamp DESC
+    GROUP BY agent, session_id, model, strftime('%Y-%m-%d %H', timestamp, 'localtime')
+    ORDER BY MAX(timestamp) DESC
     LIMIT ? OFFSET ?
   `;
   params.push(limit, offset);

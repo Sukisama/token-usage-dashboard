@@ -18,13 +18,14 @@
     box-shadow: 0 12px 40px rgba(0,0,0,.55);
     padding: 16px; display: flex; flex-direction: column; color: var(--text);
   }
-  .top { display: flex; align-items: baseline; justify-content: space-between; }
+  .top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
   .top h1 { font-size: 14px; font-weight: 700; }
-  .date { font-size: 11px; color: var(--text-2); }
-  .close { position: absolute; top: 12px; right: 14px; width: 18px; height: 18px;
-    border: none; background: transparent; color: var(--text-2); font-size: 15px;
-    cursor: pointer; line-height: 1; }
-  .close:hover { color: var(--text); }
+  .top-right { display: flex; align-items: center; gap: 10px; }
+  .date { font-size: 11px; color: var(--text-2); white-space: nowrap; }
+  .close { width: 20px; height: 20px; border: none; background: transparent;
+    color: var(--text-2); font-size: 14px; cursor: pointer; line-height: 1;
+    display: flex; align-items: center; justify-content: center; border-radius: 6px; flex: 0 0 auto; }
+  .close:hover { color: var(--text); background: var(--surface-2); }
 
   .hero { display: flex; gap: 10px; margin-top: 14px; }
   .hero .box { flex: 1; background: var(--surface-2); border-radius: 10px; padding: 10px 12px; }
@@ -51,10 +52,12 @@
 </head>
 <body>
   <div class="card">
-    <button class="close" id="close">✕</button>
     <div class="top">
       <h1>今日用量</h1>
-      <span class="date" id="date"></span>
+      <div class="top-right">
+        <span class="date" id="date"></span>
+        <button class="close" id="close">✕</button>
+      </div>
     </div>
 
     <div class="hero">
