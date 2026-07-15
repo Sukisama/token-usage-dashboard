@@ -202,6 +202,63 @@ function getSummary() {
   };
 }
 
+// Start date (local YYYY-MM-DD) for a named period, or null for today/all.
+function periodStart(period) {
+  const d = new Date();
+  if (period === 'week') {
+    const monOffset = (d.getDay() + 6) % 7; // days since Monday
+    d.setDate(d.getDate() - monOffset);
+    return localDateStr(d);
+  }
+  if (period === 'month') {
+    return localDateStr(new Date(d.getFullYear(), d.getMonth(), 1));
+  }
+  return null;
+}
+
+// Summary for a period ('today' | 'week' | 'month' | 'all'): total tokens,
+// estimated cost, per-agent breakdown, plus today's heat level (0-4) for the
+// desktop orb's colour.
+function getPeriodSummary(period) {
+  let where = '';
+  let params = [];
+  if (period === 'today') {
+    where = "WHERE date(timestamp, 'localtime') = ?";
+    params = [localDateStr()];
+  } else if (period === 'week' || period === 'month') {
+    where = "WHERE date(timestamp, 'localtime') >= ?";
+    params = [periodStart(period)];
+  }
+
+  const total = query(
+    `SELECT COALESCE(SUM(total_tokens), 0) t FROM usage_records ${where}`, params)[0].t;
+  const byAgent = query(
+    `SELECT agent, COALESCE(SUM(total_tokens), 0) as total_tokens
+     FROM usage_records ${where} GROUP BY agent ORDER BY total_tokens DESC`, params);
+
+  const am = query(
+    `SELECT agent, model,
+       COALESCE(SUM(input_tokens),0) input_tokens,
+       COALESCE(SUM(output_tokens),0) output_tokens,
+       COALESCE(SUM(cache_read_tokens),0) cache_read_tokens,
+       COALESCE(SUM(cache_creation_tokens),0) cache_creation_tokens
+     FROM usage_records ${where} GROUP BY agent, model`, params);
+  let cost = 0, priced = false;
+  for (const r of am) { const c = pricing.costOf(r); if (c != null) { cost += c; priced = true; } }
+
+  // today's heat level relative to the busiest single day
+  const maxDay = query(
+    `SELECT COALESCE(MAX(dt), 0) m FROM
+       (SELECT SUM(total_tokens) dt FROM usage_records GROUP BY date(timestamp, 'localtime'))`)[0].m;
+  const todayTotal = query(
+    `SELECT COALESCE(SUM(total_tokens), 0) t FROM usage_records
+     WHERE date(timestamp, 'localtime') = ?`, [localDateStr()])[0].t;
+  const ratio = maxDay > 0 ? todayTotal / maxDay : 0;
+  const heatLevel = todayTotal <= 0 ? 0 : ratio <= 0.2 ? 1 : ratio <= 0.4 ? 2 : ratio <= 0.7 ? 3 : 4;
+
+  return { period, total_tokens: total, cost: priced ? cost : null, byAgent, todayHeatLevel: heatLevel };
+}
+
 function getDailyUsage(agent) {
   let sql;
   let params = [];
@@ -390,6 +447,7 @@ module.exports = {
   importFromBuffer,
   clearAll,
   getSummary,
+  getPeriodSummary,
   getDailyUsage,
   getDailyByAgent,
   getDailyByModel,

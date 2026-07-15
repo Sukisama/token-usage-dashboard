@@ -1,11 +1,27 @@
 const { app, BrowserWindow, Tray, Menu, globalShortcut, ipcMain, nativeImage, screen } = require('electron');
 const path = require('path');
 const fs = require('fs');
+const os = require('os');
 const http = require('http');
 const { spawn } = require('child_process');
 
 const PORT = 7373;
 const ROOT = path.join(__dirname, '..');
+const CONFIG_PATH = path.join(os.homedir(), '.token-usage-dashboard', 'config.json');
+
+// --- persisted settings ------------------------------------------------------
+const DEFAULT_CONFIG = { orbMetric: 'today' };
+function loadConfig() {
+  try { return { ...DEFAULT_CONFIG, ...JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8')) }; }
+  catch { return { ...DEFAULT_CONFIG }; }
+}
+function saveConfig(cfg) {
+  try {
+    fs.mkdirSync(path.dirname(CONFIG_PATH), { recursive: true });
+    fs.writeFileSync(CONFIG_PATH, JSON.stringify(cfg, null, 2));
+  } catch { /* non-fatal */ }
+}
+let config = loadConfig();
 
 let orbWin = null;
 let panelWin = null;
@@ -147,6 +163,33 @@ function toggleOrb() {
 
 // ---- tray -------------------------------------------------------------------
 
+const METRIC_LABELS = { today: '今日', week: '本周', month: '本月', all: '全部' };
+
+function setOrbMetric(metric) {
+  config.orbMetric = metric;
+  saveConfig(config);
+  if (orbWin) orbWin.webContents.send('orb:metric-changed', metric);
+  buildTrayMenu();
+}
+
+function buildTrayMenu() {
+  if (!tray) return;
+  const metricItems = Object.keys(METRIC_LABELS).map(m => ({
+    label: METRIC_LABELS[m],
+    type: 'radio',
+    checked: config.orbMetric === m,
+    click: () => setOrbMetric(m)
+  }));
+  tray.setContextMenu(Menu.buildFromTemplate([
+    { label: '显示/隐藏悬浮球', click: toggleOrb },
+    { label: '打开完整看板', click: openDashboard },
+    { type: 'separator' },
+    { label: '悬浮球显示', submenu: metricItems },
+    { type: 'separator' },
+    { label: '退出', click: () => app.quit() }
+  ]));
+}
+
 function createTray() {
   let img;
   const trayPath = path.join(ROOT, 'assets', 'trayTemplate.png');
@@ -158,12 +201,7 @@ function createTray() {
   }
   tray = new Tray(img);
   tray.setToolTip('Token 用量看板');
-  tray.setContextMenu(Menu.buildFromTemplate([
-    { label: '显示/隐藏悬浮球', click: toggleOrb },
-    { label: '打开完整看板', click: openDashboard },
-    { type: 'separator' },
-    { label: '退出', click: () => app.quit() }
-  ]));
+  buildTrayMenu();
   tray.on('click', togglePanel);
 }
 
@@ -180,6 +218,7 @@ ipcMain.on('panel:open-dashboard', openDashboard);
 ipcMain.on('panel:close', () => panelWin && panelWin.hide());
 ipcMain.on('app:quit', () => app.quit());
 ipcMain.handle('app:port', () => PORT);
+ipcMain.handle('app:orb-metric', () => config.orbMetric);
 
 // ---- lifecycle --------------------------------------------------------------
 

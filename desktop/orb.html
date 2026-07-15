@@ -10,11 +10,9 @@
 
   .stage { position: relative; width: 62px; height: 62px; }
 
-  /* soft breathing halo behind the sphere; fades fully to transparent
-     before the window edge so there is no clipped rectangle */
   .halo {
     position: absolute; inset: -25px; border-radius: 50%; z-index: 0;
-    background: radial-gradient(circle, rgba(249,115,22,.42) 30%, rgba(249,115,22,0) 68%);
+    background: radial-gradient(circle, var(--halo) 30%, rgba(0,0,0,0) 68%);
     animation: breathe 3.4s ease-in-out infinite;
   }
   @keyframes breathe {
@@ -26,60 +24,66 @@
     position: relative; z-index: 1; width: 62px; height: 62px; border-radius: 50%;
     overflow: hidden; cursor: grab;
     display: flex; flex-direction: column; align-items: center; justify-content: center;
-    background:
-      radial-gradient(circle at 34% 26%,
-        #ffd6a8 0%, #fdb877 20%, #fb923c 42%, #f97316 62%, #d94f0b 84%, #a23808 100%);
+    background: radial-gradient(circle at 34% 26%,
+      var(--c1) 0%, var(--c2) 46%, var(--c3) 80%, var(--c4) 100%);
     box-shadow:
-      inset 0 2px 5px rgba(255,226,190,.65),
-      inset 0 -7px 13px rgba(120,42,6,.6),
-      inset 0 0 0 1px rgba(255,180,120,.25),
-      0 4px 12px rgba(249,115,22,.4);
+      inset 0 2px 5px rgba(255,255,255,.28),
+      inset 0 -7px 13px rgba(0,0,0,.32),
+      inset 0 0 0 1px rgba(255,255,255,.12),
+      0 4px 12px var(--halo);
     transition: transform .12s ease;
   }
   .orb:active { cursor: grabbing; transform: scale(.95); }
 
-  /* rotating specular sweep — the "炫" shimmer */
   .sheen {
     position: absolute; inset: -30%; border-radius: 50%; pointer-events: none;
     background: conic-gradient(from 0deg,
-      rgba(255,255,255,0) 0deg,
-      rgba(255,255,255,0) 55deg,
-      rgba(255,255,255,.45) 90deg,
-      rgba(255,255,255,0) 135deg,
-      rgba(255,255,255,0) 360deg);
-    mix-blend-mode: screen; opacity: .8;
-    animation: spin 5.5s linear infinite;
+      rgba(255,255,255,0) 0deg, rgba(255,255,255,0) 55deg,
+      rgba(255,255,255,.4) 90deg, rgba(255,255,255,0) 135deg, rgba(255,255,255,0) 360deg);
+    mix-blend-mode: screen; opacity: .75; animation: spin 5.5s linear infinite;
   }
   @keyframes spin { to { transform: rotate(360deg); } }
 
-  /* glossy top-left highlight */
   .spec {
     position: absolute; top: 7px; left: 12px; width: 26px; height: 16px;
-    background: radial-gradient(ellipse at center, rgba(255,255,255,.85), rgba(255,255,255,0) 72%);
+    background: radial-gradient(ellipse at center, rgba(255,255,255,.8), rgba(255,255,255,0) 72%);
     border-radius: 50%; pointer-events: none; filter: blur(.4px);
   }
 
-  .label { position: relative; z-index: 2; font-size: 8px; font-weight: 600; letter-spacing: .5px;
-    color: rgba(255,255,255,.9); text-shadow: 0 1px 2px rgba(90,30,0,.5); margin-top: 1px; }
+  .label { position: relative; z-index: 2; font-size: 8px; font-weight: 700; letter-spacing: .5px;
+    color: var(--fg); text-shadow: var(--fg-shadow); margin-top: 1px; opacity: .92; }
   .value { position: relative; z-index: 2; font-size: 15px; font-weight: 800; line-height: 1.05;
-    color: #fff; text-shadow: 0 1px 3px rgba(80,25,0,.55); }
+    color: var(--fg); text-shadow: var(--fg-shadow); }
 </style>
 </head>
 <body>
-  <div class="stage">
+  <div class="stage" id="stage">
     <div class="halo"></div>
     <div class="orb" id="orb">
       <div class="sheen"></div>
       <div class="spec"></div>
-      <div class="label">今日</div>
+      <div class="label" id="label">今日</div>
       <div class="value" id="value">—</div>
     </div>
   </div>
 
 <script>
+  const stage = document.getElementById('stage');
   const orb = document.getElementById('orb');
   const valueEl = document.getElementById('value');
+  const labelEl = document.getElementById('label');
+  const LABELS = { today:'今日', week:'本周', month:'本月', all:'全部' };
   let PORT = 7373;
+  let metric = 'today';
+
+  // Heat levels 0-4 (cold slate -> hot orange). Colour follows today's activity.
+  const HEAT = [
+    { c1:'#8f9cab', c2:'#606b78', c3:'#3f4751', c4:'#2c333b', halo:'rgba(130,145,165,.32)' },
+    { c1:'#daa06a', c2:'#b45f27', c3:'#7c3c13', c4:'#5c2c0d', halo:'rgba(180,95,39,.34)'  },
+    { c1:'#f4a355', c2:'#d5590f', c3:'#95390a', c4:'#6e2b07', halo:'rgba(213,89,15,.38)'  },
+    { c1:'#ffb566', c2:'#f2740f', c3:'#b5470a', c4:'#873507', halo:'rgba(242,116,15,.42)' },
+    { c1:'#ffd490', c2:'#fb923c', c3:'#d1490b', c4:'#9a3708', halo:'rgba(251,146,60,.48)' },
+  ];
 
   function fmt(n) {
     if (!n) return '0';
@@ -89,12 +93,41 @@
     return String(n);
   }
 
+  // Relative luminance of a #rrggbb colour (0=dark, 1=light).
+  function luminance(hex) {
+    const m = hex.replace('#', '');
+    const v = [0, 2, 4].map(i => {
+      let c = parseInt(m.substr(i, 2), 16) / 255;
+      return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+    });
+    return 0.2126 * v[0] + 0.7152 * v[1] + 0.0722 * v[2];
+  }
+
+  function applyHeat(level) {
+    const h = HEAT[Math.max(0, Math.min(4, level | 0))];
+    const s = stage.style;
+    s.setProperty('--c1', h.c1); s.setProperty('--c2', h.c2);
+    s.setProperty('--c3', h.c3); s.setProperty('--c4', h.c4);
+    s.setProperty('--halo', h.halo);
+    // Adaptive text colour: dark text over a light body, else white — so the
+    // number stays readable no matter how bright the orb gets.
+    const light = luminance(h.c2) > 0.5 || luminance(h.c1) > 0.72;
+    if (light) {
+      s.setProperty('--fg', '#3a1c05');
+      s.setProperty('--fg-shadow', '0 1px 1px rgba(255,240,220,.6)');
+    } else {
+      s.setProperty('--fg', '#ffffff');
+      s.setProperty('--fg-shadow', '0 1px 3px rgba(50,18,0,.7)');
+    }
+  }
+
   async function refresh() {
+    labelEl.textContent = LABELS[metric] || '今日';
     try {
-      const res = await fetch(`http://localhost:${PORT}/api/summary`);
+      const res = await fetch(`http://localhost:${PORT}/api/period-summary?period=${metric}`);
       const data = await res.json();
-      const today = (data.today || []).reduce((s, t) => s + (t.total_tokens || 0), 0);
-      valueEl.textContent = fmt(today);
+      valueEl.textContent = fmt(data.total_tokens);
+      applyHeat(data.todayHeatLevel || 0);
     } catch { /* server not up yet */ }
   }
 
@@ -117,8 +150,12 @@
   });
   orb.addEventListener('contextmenu', e => { e.preventDefault(); window.orbAPI.togglePanel(); });
 
+  window.orbAPI?.onMetricChanged?.((_e, m) => { metric = m || 'today'; refresh(); });
+
   (async () => {
     try { const p = await window.orbAPI?.port?.(); if (p) PORT = p; } catch {}
+    try { const m = await window.orbAPI?.orbMetric?.(); if (m) metric = m; } catch {}
+    applyHeat(4);   // sensible default until first fetch
     refresh();
     setInterval(refresh, 8000);
   })();

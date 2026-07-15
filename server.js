@@ -99,6 +99,10 @@ async function handleApi(req, res) {
       sendJson(res, results);
     } else if (req.url === '/api/summary') {
       sendJson(res, db.getSummary());
+    } else if (req.url.startsWith('/api/period-summary')) {
+      const url = new URL(req.url, `http://localhost:${PORT}`);
+      const period = url.searchParams.get('period') || 'today';
+      sendJson(res, db.getPeriodSummary(period));
     } else if (req.url.startsWith('/api/daily-agents')) {
       const url = new URL(req.url, `http://localhost:${PORT}`);
       sendJson(res, db.getDailyByAgent(url.searchParams.get('agent') || 'all'));

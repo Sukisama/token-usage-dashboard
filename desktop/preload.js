@@ -7,5 +7,7 @@ contextBridge.exposeInMainWorld('orbAPI', {
   closePanel: () => ipcRenderer.send('panel:close'),
   quit: () => ipcRenderer.send('app:quit'),
   port: () => ipcRenderer.invoke('app:port'),
-  onRefresh: (cb) => ipcRenderer.on('panel:refresh', cb)
+  orbMetric: () => ipcRenderer.invoke('app:orb-metric'),
+  onRefresh: (cb) => ipcRenderer.on('panel:refresh', cb),
+  onMetricChanged: (cb) => ipcRenderer.on('orb:metric-changed', cb)
 });
