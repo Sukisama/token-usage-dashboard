@@ -46,9 +46,10 @@ function collect() {
 
       // Codex `input_tokens` includes the cached portion; store only the
       // non-cached input so cost isn't double-counted (cached is priced
-      // separately as cache_read). Total stays untouched.
+      // separately as cache_read).
       const cachedIn = safeInt(usage.cached_input_tokens);
       const nonCachedIn = Math.max(0, safeInt(usage.input_tokens) - cachedIn);
+      const output = safeInt(usage.output_tokens);
 
       records.push({
         agent: 'codex',
@@ -56,11 +57,13 @@ function collect() {
         timestamp,
         model: payload.info?.model || currentModel || null,
         input_tokens: nonCachedIn,
-        output_tokens: safeInt(usage.output_tokens),
+        output_tokens: output,
         cache_read_tokens: cachedIn,
         cache_creation_tokens: 0,
         reasoning_tokens: safeInt(usage.reasoning_output_tokens),
-        total_tokens: safeInt(usage.total_tokens),
+        // Standard total = all tokens processed (input incl. cached + output).
+        // Same as the provider's own total_tokens.
+        total_tokens: nonCachedIn + cachedIn + output,
         source_file: file
       });
     }

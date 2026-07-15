@@ -146,6 +146,12 @@ body {
   color: var(--brand-light);
 }
 
+.card-sub {
+  font-size: 11px;
+  color: var(--text-secondary);
+  margin-top: 6px;
+}
+
 .card {
   background: var(--surface);
   border: 1px solid var(--border);

@@ -144,7 +144,9 @@ function getSummary() {
 
   const today = localDateStr();
   const todayUsage = query(`
-    SELECT agent, COALESCE(SUM(total_tokens), 0) as total_tokens
+    SELECT agent,
+      COALESCE(SUM(total_tokens), 0) as total_tokens,
+      COALESCE(SUM(cache_read_tokens), 0) as cache_read_tokens
     FROM usage_records
     WHERE date(timestamp, 'localtime') = ?
     GROUP BY agent
@@ -230,8 +232,11 @@ function getPeriodSummary(period) {
     params = [periodStart(period)];
   }
 
-  const total = query(
-    `SELECT COALESCE(SUM(total_tokens), 0) t FROM usage_records ${where}`, params)[0].t;
+  const totals = query(
+    `SELECT COALESCE(SUM(total_tokens), 0) t, COALESCE(SUM(cache_read_tokens), 0) cr
+     FROM usage_records ${where}`, params)[0];
+  const total = totals.t;
+  const cacheRead = totals.cr;
   const byAgent = query(
     `SELECT agent, COALESCE(SUM(total_tokens), 0) as total_tokens
      FROM usage_records ${where} GROUP BY agent ORDER BY total_tokens DESC`, params);
@@ -256,7 +261,7 @@ function getPeriodSummary(period) {
   const ratio = maxDay > 0 ? todayTotal / maxDay : 0;
   const heatLevel = todayTotal <= 0 ? 0 : ratio <= 0.2 ? 1 : ratio <= 0.4 ? 2 : ratio <= 0.7 ? 3 : 4;
 
-  return { period, total_tokens: total, cost: priced ? cost : null, byAgent, todayHeatLevel: heatLevel };
+  return { period, total_tokens: total, cache_read: cacheRead, cost: priced ? cost : null, byAgent, todayHeatLevel: heatLevel };
 }
 
 function getDailyUsage(agent) {

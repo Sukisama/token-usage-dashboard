@@ -193,6 +193,17 @@ function renderSummary(data) {
   document.getElementById('todayCost').textContent = formatCost(data.todayCost);
   document.getElementById('activeAgents').textContent = data.byAgent.length;
   document.getElementById('trackedDays').textContent = data.overall.days;
+
+  // Total follows the standard convention (includes cache reads). Show how much
+  // of it is cache reads, since that portion is billed at a discount.
+  const cacheTip = '缓存读取：同一段上下文被反复读取的量，已含在上方总量里，按缓存的折扣价计入花费';
+  const totalCache = document.getElementById('totalCache');
+  const todayCache = document.getElementById('todayCache');
+  totalCache.textContent = `其中缓存读取 ${formatNumber(data.overall.cache_read_tokens)}`;
+  totalCache.title = cacheTip;
+  const todayCacheRead = data.today.reduce((sum, t) => sum + (t.cache_read_tokens || 0), 0);
+  todayCache.textContent = `其中缓存读取 ${formatNumber(todayCacheRead)}`;
+  todayCache.title = cacheTip;
 }
 
 function renderAgentTabs(agents) {

@@ -42,6 +42,7 @@ function collect() {
         cache_read_tokens: inputCacheRead,
         cache_creation_tokens: inputCacheCreation,
         reasoning_tokens: 0,
+        // Standard total = all tokens processed (incl. cache read/write).
         total_tokens: inputOther + inputCacheRead + inputCacheCreation + output,
         source_file: file
       });

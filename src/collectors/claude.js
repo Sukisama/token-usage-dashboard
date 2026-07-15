@@ -34,11 +34,13 @@ function collect() {
         cache_read_tokens: safeInt(usage.cache_read_input_tokens),
         cache_creation_tokens: safeInt(usage.cache_creation_input_tokens),
         reasoning_tokens: 0,
-        total_tokens: safeInt(usage.total_tokens) || (
-          safeInt(usage.input_tokens) +
+        // Standard total = all tokens processed. Claude reports cache read as a
+        // separate field, so add it in explicitly to match the OpenAI-style
+        // total (input incl. cached + output) other agents report.
+        total_tokens: safeInt(usage.input_tokens) +
           safeInt(usage.output_tokens) +
-          safeInt(usage.cache_creation_input_tokens)
-        ),
+          safeInt(usage.cache_creation_input_tokens) +
+          safeInt(usage.cache_read_input_tokens),
         source_file: file
       });
     }
