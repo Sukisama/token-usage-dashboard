@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Token 用量看板</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="app">
+    <header class="header">
+      <div class="title">
+        <h1>Token 用量看板</h1>
+        <p class="subtitle">跨 Agent 用量统计 · 自动采集本地日志</p>
+      </div>
+      <button id="scanBtn" class="scan-btn">
+        <span class="icon">↻</span> 扫描日志
+      </button>
+    </header>
+
+    <div id="scanStatus" class="scan-status"></div>
+
+    <section class="summary">
+      <div class="card">
+        <div class="card-label">累计 Token</div>
+        <div class="card-value" id="totalTokens">-</div>
+      </div>
+      <div class="card">
+        <div class="card-label">今日 Token</div>
+        <div class="card-value" id="todayTokens">-</div>
+      </div>
+      <div class="card">
+        <div class="card-label">活跃 Agent</div>
+        <div class="card-value" id="activeAgents">-</div>
+      </div>
+      <div class="card">
+        <div class="card-label">统计天数</div>
+        <div class="card-value" id="trackedDays">-</div>
+      </div>
+    </section>
+
+    <section class="controls">
+      <div class="agent-tabs" id="agentTabs">
+        <button class="tab active" data-agent="all">全部</button>
+      </div>
+    </section>
+
+    <section class="heatmap-section">
+      <div class="section-header">
+        <h2>每日用量热力图</h2>
+        <div class="legend">
+          <span>少</span>
+          <div class="legend-cells">
+            <div class="legend-cell level-0"></div>
+            <div class="legend-cell level-1"></div>
+            <div class="legend-cell level-2"></div>
+            <div class="legend-cell level-3"></div>
+            <div class="legend-cell level-4"></div>
+          </div>
+          <span>多</span>
+        </div>
+      </div>
+      <div id="heatmap" class="heatmap"></div>
+    </section>
+
+    <section class="details-section">
+      <h2>按 Agent 汇总</h2>
+      <div id="agentList" class="agent-list"></div>
+    </section>
+
+    <section class="models-section">
+      <h2>按模型汇总</h2>
+      <table class="records-table">
+        <thead>
+          <tr>
+            <th>Agent</th>
+            <th>模型</th>
+            <th>Input</th>
+            <th>Output</th>
+            <th>Cache</th>
+            <th>Total</th>
+            <th>记录数</th>
+          </tr>
+        </thead>
+        <tbody id="modelsBody"></tbody>
+      </table>
+    </section>
+
+    <section class="records-section">
+      <h2>最近记录</h2>
+      <table class="records-table">
+        <thead>
+          <tr>
+            <th>时间</th>
+            <th>Agent</th>
+            <th>模型</th>
+            <th>Input</th>
+            <th>Output</th>
+            <th>Cache</th>
+            <th>Total</th>
+          </tr>
+        </thead>
+        <tbody id="recordsBody"></tbody>
+      </table>
+    </section>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

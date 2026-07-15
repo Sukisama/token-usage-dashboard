@@ -1,0 +1,120 @@
+const http = require('http');
+const fs = require('fs');
+const path = require('path');
+const { exec } = require('child_process');
+const db = require('./src/db');
+const collectors = require('./src/collectors');
+
+const PORT = 7373;
+const SRC_DIR = path.join(__dirname, 'src');
+
+const MIME_TYPES = {
+  '.html': 'text/html',
+  '.css': 'text/css',
+  '.js': 'application/javascript',
+  '.json': 'application/json',
+  '.png': 'image/png',
+  '.svg': 'image/svg+xml',
+  '.ico': 'image/x-icon'
+};
+
+async function scanAll() {
+  const results = [];
+  for (const [name, collector] of Object.entries(collectors)) {
+    try {
+      const records = await collector.collect();
+      const inserted = db.insertUsageRecords(records);
+      results.push({ agent: name, found: records.length, inserted });
+    } catch (err) {
+      results.push({ agent: name, found: 0, inserted: 0, error: err.message });
+    }
+  }
+  return results;
+}
+
+function serveStatic(req, res) {
+  let filePath = path.join(SRC_DIR, req.url === '/' ? 'index.html' : req.url);
+  if (fs.existsSync(filePath) && fs.statSync(filePath).isDirectory()) {
+    filePath = path.join(filePath, 'index.html');
+  }
+
+  if (!fs.existsSync(filePath)) {
+    res.writeHead(404, { 'Content-Type': 'text/plain' });
+    res.end('Not found');
+    return;
+  }
+
+  const ext = path.extname(filePath);
+  const contentType = MIME_TYPES[ext] || 'application/octet-stream';
+  res.writeHead(200, { 'Content-Type': contentType });
+  fs.createReadStream(filePath).pipe(res);
+}
+
+async function handleApi(req, res) {
+  res.writeHead(200, { 'Content-Type': 'application/json' });
+
+  try {
+    if (req.url === '/api/scan') {
+      const results = await scanAll();
+      res.end(JSON.stringify(results));
+    } else if (req.url === '/api/summary') {
+      res.end(JSON.stringify(db.getSummary()));
+    } else if (req.url.startsWith('/api/daily')) {
+      const url = new URL(req.url, `http://localhost:${PORT}`);
+      const agent = url.searchParams.get('agent') || 'all';
+      res.end(JSON.stringify(db.getDailyUsage(agent)));
+    } else if (req.url === '/api/agents') {
+      res.end(JSON.stringify(db.getAgents()));
+    } else if (req.url.startsWith('/api/records')) {
+      const url = new URL(req.url, `http://localhost:${PORT}`);
+      const agent = url.searchParams.get('agent') || 'all';
+      const limit = parseInt(url.searchParams.get('limit') || '50', 10);
+      const offset = parseInt(url.searchParams.get('offset') || '0', 10);
+      res.end(JSON.stringify(db.getRecords({ agent, limit, offset })));
+    } else if (req.url.startsWith('/api/models')) {
+      const url = new URL(req.url, `http://localhost:${PORT}`);
+      const agent = url.searchParams.get('agent') || 'all';
+      res.end(JSON.stringify(db.getModelUsage(agent)));
+    } else {
+      res.writeHead(404);
+      res.end(JSON.stringify({ error: 'Not found' }));
+    }
+  } catch (err) {
+    res.writeHead(500);
+    res.end(JSON.stringify({ error: err.message }));
+  }
+}
+
+const server = http.createServer(async (req, res) => {
+  // CORS for local development
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+
+  if (req.method === 'OPTIONS') {
+    res.writeHead(204);
+    res.end();
+    return;
+  }
+
+  if (req.url.startsWith('/api/')) {
+    await handleApi(req, res);
+  } else {
+    serveStatic(req, res);
+  }
+});
+
+async function start() {
+  await db.init();
+
+  server.listen(PORT, () => {
+    console.log(`Token 用量看板已启动: http://localhost:${PORT}`);
+
+    // Open browser on macOS
+    if (process.platform === 'darwin') {
+      exec(`open http://localhost:${PORT}`);
+    }
+  });
+}
+
+start();

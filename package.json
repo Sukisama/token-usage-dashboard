@@ -1,0 +1,22 @@
+{
+  "name": "token-usage-dashboard",
+  "version": "0.1.0",
+  "description": "跨 Agent Token 用量统计桌面看板",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "NODE_ENV=development node server.js",
+    "electron": "electron ."
+  },
+  "keywords": [
+    "token",
+    "usage",
+    "agent",
+    "dashboard"
+  ],
+  "author": "Doris",
+  "license": "MIT",
+  "dependencies": {
+    "sql.js": "^1.10.3"
+  }
+}
