@@ -187,16 +187,18 @@ async function loadHeatmap(agent) {
 
   const maxValue = Math.max(...values);
 
-  // Generate last 52 weeks
+  // Generate last 52 weeks (always full weeks)
   const today = new Date();
   today.setHours(0, 0, 0, 0);
-  const endDate = new Date(today);
-  const startDate = new Date(today);
-  startDate.setDate(startDate.getDate() - 364);
 
-  // Align to Sunday
-  const dayOfWeek = startDate.getDay();
-  startDate.setDate(startDate.getDate() - dayOfWeek);
+  // End on Saturday of current week
+  const endDate = new Date(today);
+  endDate.setDate(endDate.getDate() + (6 - today.getDay()));
+
+  // Start 51 weeks before end date, then align to Sunday
+  const startDate = new Date(endDate);
+  startDate.setDate(startDate.getDate() - (52 * 7 - 1));
+  startDate.setDate(startDate.getDate() - startDate.getDay());
 
   const weeks = [];
   let currentWeek = [];
@@ -213,10 +215,6 @@ async function loadHeatmap(agent) {
     }
 
     current.setDate(current.getDate() + 1);
-  }
-
-  if (currentWeek.length > 0) {
-    weeks.push(currentWeek);
   }
 
   for (const week of weeks) {
