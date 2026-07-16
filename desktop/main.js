@@ -87,7 +87,8 @@ function createOrb() {
     webPreferences: { preload: path.join(__dirname, 'preload.js') }
   });
   orbWin.setAlwaysOnTop(true, 'screen-saver');
-  orbWin.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+  // Float on every Space so clicking never yanks you to another desktop.
+  orbWin.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true, skipTransformProcessType: true });
   orbWin.loadFile(path.join(__dirname, 'orb.html'));
 }
 
@@ -106,6 +107,9 @@ function createPanel() {
     webPreferences: { preload: path.join(__dirname, 'preload.js') }
   });
   panelWin.setAlwaysOnTop(true, 'screen-saver');
+  // Same as the orb: show on the current Space instead of switching to the one
+  // the panel was created on (which was the desktop-switch bug).
+  panelWin.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true, skipTransformProcessType: true });
   panelWin.loadFile(path.join(__dirname, 'panel.html'));
   panelWin.on('blur', () => panelWin.hide());
 }
