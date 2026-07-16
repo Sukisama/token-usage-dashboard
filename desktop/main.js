@@ -28,6 +28,7 @@ let panelWin = null;
 let dashboardWin = null;
 let tray = null;
 let serverProcess = null;
+let panelHiddenAt = 0;
 
 const ORB_SIZE = 112;      // window box; the glowing orb (62px) sits inside with halo margin
 const PANEL_W = 300;
@@ -98,8 +99,9 @@ function createPanel() {
     height: PANEL_H,
     frame: false,
     transparent: true,
+    backgroundColor: '#00000000',
     resizable: false,
-    hasShadow: false,
+    hasShadow: true,
     alwaysOnTop: true,
     skipTaskbar: true,
     show: false,
@@ -111,7 +113,7 @@ function createPanel() {
   // the panel was created on (which was the desktop-switch bug).
   panelWin.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true, skipTransformProcessType: true });
   panelWin.loadFile(path.join(__dirname, 'panel.html'));
-  panelWin.on('blur', () => panelWin.hide());
+  panelWin.on('blur', () => { panelWin.hide(); panelHiddenAt = Date.now(); });
 }
 
 function positionPanelNearOrb() {
@@ -129,12 +131,16 @@ function togglePanel() {
   if (!panelWin) createPanel();
   if (panelWin.isVisible()) {
     panelWin.hide();
-  } else {
-    positionPanelNearOrb();
-    panelWin.webContents.send('panel:refresh');
-    panelWin.show();
-    panelWin.focus();
+    return;
   }
+  // Clicking the orb while the panel is open first fires the panel's blur
+  // (which hides it); without this guard the same click would immediately
+  // reopen it. Skip reopening if the panel was just closed by that blur.
+  if (Date.now() - panelHiddenAt < 250) return;
+  positionPanelNearOrb();
+  panelWin.webContents.send('panel:refresh');
+  panelWin.show();
+  panelWin.focus();
 }
 
 function openDashboard() {
@@ -194,6 +200,25 @@ function buildTrayMenu() {
   ]));
 }
 
+// Native right-click menu shown at the orb.
+function popupOrbMenu() {
+  const metricItems = Object.keys(METRIC_LABELS).map(m => ({
+    label: METRIC_LABELS[m],
+    type: 'radio',
+    checked: config.orbMetric === m,
+    click: () => setOrbMetric(m)
+  }));
+  const menu = Menu.buildFromTemplate([
+    { label: '显示 / 隐藏面板', click: togglePanel },
+    { label: '打开完整看板', click: openDashboard },
+    { label: '悬浮球显示', submenu: metricItems },
+    { type: 'separator' },
+    { label: '隐藏悬浮球', click: () => orbWin && orbWin.hide() },
+    { label: '退出', click: () => app.quit() }
+  ]);
+  menu.popup({ window: orbWin });
+}
+
 function createTray() {
   let img;
   const trayPath = path.join(ROOT, 'assets', 'trayTemplate.png');
@@ -218,6 +243,7 @@ ipcMain.on('orb:move-by', (_e, { dx, dy }) => {
   if (panelWin && panelWin.isVisible()) positionPanelNearOrb();
 });
 ipcMain.on('orb:toggle-panel', togglePanel);
+ipcMain.on('orb:context-menu', popupOrbMenu);
 ipcMain.on('panel:open-dashboard', openDashboard);
 ipcMain.on('panel:close', () => panelWin && panelWin.hide());
 ipcMain.on('app:quit', () => app.quit());

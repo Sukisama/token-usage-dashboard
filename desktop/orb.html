@@ -162,7 +162,7 @@
     dragging = false;
     if (!moved) window.orbAPI.togglePanel();
   });
-  orb.addEventListener('contextmenu', e => { e.preventDefault(); window.orbAPI.togglePanel(); });
+  orb.addEventListener('contextmenu', e => { e.preventDefault(); window.orbAPI.showMenu(); });
 
   window.orbAPI?.onMetricChanged?.((_e, m) => { metric = m || 'today'; refresh(); });
 

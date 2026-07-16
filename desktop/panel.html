@@ -13,9 +13,13 @@
 
   .card {
     position: absolute; inset: 10px;
-    background: linear-gradient(180deg, #1d1d21, #161619);
-    border: 1px solid var(--border); border-radius: 16px;
-    box-shadow: 0 12px 40px rgba(0,0,0,.55);
+    /* frosted glass: blurs the desktop behind the rounded card */
+    background: rgba(26,26,30,0.62);
+    backdrop-filter: blur(26px) saturate(170%);
+    -webkit-backdrop-filter: blur(26px) saturate(170%);
+    border: 1px solid rgba(255,255,255,0.10);
+    border-radius: 18px;
+    box-shadow: 0 18px 48px rgba(0,0,0,.5), inset 0 1px 0 rgba(255,255,255,.08);
     padding: 16px; display: flex; flex-direction: column; color: var(--text);
   }
   .top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
