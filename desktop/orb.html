@@ -6,64 +6,81 @@
   * { margin: 0; padding: 0; box-sizing: border-box; -webkit-user-select: none; user-select: none; }
   html, body { width: 100%; height: 100%; background: transparent; overflow: hidden; cursor: default; }
   body { display: flex; align-items: center; justify-content: center;
-    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", sans-serif; }
+    font-family: -apple-system, "SF Pro Rounded", "SF Pro Display", BlinkMacSystemFont, sans-serif; }
 
-  .stage { position: relative; width: 62px; height: 62px; }
+  .stage { position: relative; width: 72px; height: 72px; }
 
+  /* soft contact shadow that grounds the floating orb */
+  .shadow {
+    position: absolute; left: 50%; bottom: 2px; transform: translateX(-50%);
+    width: 46px; height: 12px; border-radius: 50%;
+    background: radial-gradient(ellipse at center, rgba(0,0,0,.45), rgba(0,0,0,0) 72%);
+    filter: blur(3px);
+    animation: shadowFloat 4.2s ease-in-out infinite;
+  }
+
+  /* coloured glow, tinted by the heat level */
   .halo {
-    position: absolute; inset: -25px; border-radius: 50%; z-index: 0;
-    background: radial-gradient(circle, var(--halo) 30%, rgba(0,0,0,0) 68%);
-    animation: breathe 3.4s ease-in-out infinite;
+    position: absolute; inset: -18px; border-radius: 50%; z-index: 0;
+    background: radial-gradient(circle, var(--halo) 28%, rgba(0,0,0,0) 66%);
+    animation: breathe 4.2s ease-in-out infinite;
   }
-  @keyframes breathe {
-    0%,100% { opacity: .5;  transform: scale(.94); }
-    50%     { opacity: .85; transform: scale(1.06); }
-  }
+
+  .float { animation: float 4.2s ease-in-out infinite; }
 
   .orb {
-    position: relative; z-index: 1; width: 62px; height: 62px; border-radius: 50%;
+    position: relative; z-index: 1; width: 60px; height: 60px; border-radius: 50%;
     overflow: hidden; cursor: grab;
     display: flex; flex-direction: column; align-items: center; justify-content: center;
-    background: radial-gradient(circle at 34% 26%,
-      var(--c1) 0%, var(--c2) 46%, var(--c3) 80%, var(--c4) 100%);
+    /* lit from top-left, shadow terminator bottom-right */
+    background: radial-gradient(130% 130% at 30% 22%,
+      var(--c1) 0%, var(--c2) 38%, var(--c3) 70%, var(--c4) 100%);
     box-shadow:
-      inset 0 2px 5px rgba(255,255,255,.28),
-      inset 0 -7px 13px rgba(0,0,0,.32),
-      inset 0 0 0 1px rgba(255,255,255,.12),
-      0 4px 12px var(--halo);
-    transition: transform .12s ease;
+      inset 0 1.5px 1px rgba(255,255,255,.55),     /* crisp top rim light */
+      inset 0 -9px 16px rgba(0,0,0,.4),            /* bottom shadow, gives volume */
+      inset 0 -2px 3px rgba(255,225,190,.28),      /* warm bounce light at bottom */
+      inset 0 0 0 1px rgba(255,255,255,.06);       /* faint edge */
+    transition: transform .14s cubic-bezier(.34,1.56,.64,1);
   }
-  .orb:active { cursor: grabbing; transform: scale(.95); }
+  .orb:active { cursor: grabbing; transform: scale(.94); }
 
-  .sheen {
-    position: absolute; inset: -30%; border-radius: 50%; pointer-events: none;
-    background: conic-gradient(from 0deg,
-      rgba(255,255,255,0) 0deg, rgba(255,255,255,0) 55deg,
-      rgba(255,255,255,.4) 90deg, rgba(255,255,255,0) 135deg, rgba(255,255,255,0) 360deg);
-    mix-blend-mode: screen; opacity: .75; animation: spin 5.5s linear infinite;
+  /* broad soft sheen across the upper half (glass) */
+  .orb::before {
+    content: ""; position: absolute; top: -4px; left: 5px; width: 50px; height: 38px;
+    border-radius: 50%; pointer-events: none;
+    background: radial-gradient(ellipse at center, rgba(255,255,255,.5), rgba(255,255,255,0) 66%);
+    filter: blur(2px);
   }
-  @keyframes spin { to { transform: rotate(360deg); } }
-
+  /* tight bright specular dot */
   .spec {
-    position: absolute; top: 7px; left: 12px; width: 26px; height: 16px;
-    background: radial-gradient(ellipse at center, rgba(255,255,255,.8), rgba(255,255,255,0) 72%);
-    border-radius: 50%; pointer-events: none; filter: blur(.4px);
+    position: absolute; top: 8px; left: 14px; width: 13px; height: 9px; border-radius: 50%;
+    background: radial-gradient(ellipse at center, rgba(255,255,255,.98), rgba(255,255,255,0) 72%);
+    pointer-events: none;
   }
 
-  .label { position: relative; z-index: 2; font-size: 8px; font-weight: 700; letter-spacing: .5px;
-    color: var(--fg); text-shadow: var(--fg-shadow); margin-top: 1px; opacity: .92; }
+  .label { position: relative; z-index: 2; font-size: 8px; font-weight: 600; letter-spacing: .3px;
+    color: var(--fg); text-shadow: var(--fg-shadow); opacity: .9; margin-top: 1px; }
   .value { position: relative; z-index: 2; font-size: 15px; font-weight: 800; line-height: 1.05;
-    color: var(--fg); text-shadow: var(--fg-shadow); }
+    color: var(--fg); text-shadow: var(--fg-shadow);
+    font-variant-numeric: tabular-nums; letter-spacing: -.3px; }
+
+  @keyframes float      { 0%,100% { transform: translateY(1.5px); } 50% { transform: translateY(-3px); } }
+  @keyframes shadowFloat{ 0%,100% { opacity: .5; transform: translateX(-50%) scale(1); }
+                          50%      { opacity: .34; transform: translateX(-50%) scale(.82); } }
+  @keyframes breathe    { 0%,100% { opacity: .5; transform: scale(.95); }
+                          50%      { opacity: .82; transform: scale(1.05); } }
 </style>
 </head>
 <body>
   <div class="stage" id="stage">
+    <div class="shadow"></div>
     <div class="halo"></div>
-    <div class="orb" id="orb">
-      <div class="sheen"></div>
-      <div class="spec"></div>
-      <div class="label" id="label">今日</div>
-      <div class="value" id="value">—</div>
+    <div class="float">
+      <div class="orb" id="orb">
+        <div class="spec"></div>
+        <div class="label" id="label">今日</div>
+        <div class="value" id="value">—</div>
+      </div>
     </div>
   </div>
 
@@ -76,13 +93,12 @@
   let PORT = 7373;
   let metric = 'today';
 
-  // Heat levels 0-4 (cold slate -> hot orange). Colour follows today's activity.
   const HEAT = [
-    { c1:'#8f9cab', c2:'#606b78', c3:'#3f4751', c4:'#2c333b', halo:'rgba(130,145,165,.32)' },
-    { c1:'#daa06a', c2:'#b45f27', c3:'#7c3c13', c4:'#5c2c0d', halo:'rgba(180,95,39,.34)'  },
-    { c1:'#f4a355', c2:'#d5590f', c3:'#95390a', c4:'#6e2b07', halo:'rgba(213,89,15,.38)'  },
-    { c1:'#ffb566', c2:'#f2740f', c3:'#b5470a', c4:'#873507', halo:'rgba(242,116,15,.42)' },
-    { c1:'#ffd490', c2:'#fb923c', c3:'#d1490b', c4:'#9a3708', halo:'rgba(251,146,60,.48)' },
+    { c1:'#9aa6b4', c2:'#6b7684', c3:'#454e59', c4:'#2e3640', halo:'rgba(140,155,175,.34)' },
+    { c1:'#e0a878', c2:'#b6642c', c3:'#7c3f15', c4:'#572d0f', halo:'rgba(182,100,44,.36)'  },
+    { c1:'#f7a95c', c2:'#d55b10', c3:'#96380a', c4:'#682807', halo:'rgba(213,91,16,.4)'    },
+    { c1:'#ffbc70', c2:'#f2740f', c3:'#b5470a', c4:'#7f3207', halo:'rgba(242,116,15,.44)'  },
+    { c1:'#ffd99a', c2:'#fb923c', c3:'#d1490b', c4:'#8f3307', halo:'rgba(251,146,60,.5)'   },
   ];
 
   function fmt(n) {
@@ -93,7 +109,6 @@
     return String(n);
   }
 
-  // Relative luminance of a #rrggbb colour (0=dark, 1=light).
   function luminance(hex) {
     const m = hex.replace('#', '');
     const v = [0, 2, 4].map(i => {
@@ -109,15 +124,14 @@
     s.setProperty('--c1', h.c1); s.setProperty('--c2', h.c2);
     s.setProperty('--c3', h.c3); s.setProperty('--c4', h.c4);
     s.setProperty('--halo', h.halo);
-    // Adaptive text colour: dark text over a light body, else white — so the
-    // number stays readable no matter how bright the orb gets.
-    const light = luminance(h.c2) > 0.5 || luminance(h.c1) > 0.72;
+    // Decide by the body colour (c2), where the text actually sits.
+    const light = luminance(h.c2) > 0.55;
     if (light) {
       s.setProperty('--fg', '#3a1c05');
-      s.setProperty('--fg-shadow', '0 1px 1px rgba(255,240,220,.6)');
+      s.setProperty('--fg-shadow', '0 1px 1px rgba(255,240,220,.55)');
     } else {
       s.setProperty('--fg', '#ffffff');
-      s.setProperty('--fg-shadow', '0 1px 3px rgba(50,18,0,.7)');
+      s.setProperty('--fg-shadow', '0 1px 2px rgba(45,16,0,.65)');
     }
   }
 
@@ -155,7 +169,7 @@
   (async () => {
     try { const p = await window.orbAPI?.port?.(); if (p) PORT = p; } catch {}
     try { const m = await window.orbAPI?.orbMetric?.(); if (m) metric = m; } catch {}
-    applyHeat(4);   // sensible default until first fetch
+    applyHeat(4);
     refresh();
     setInterval(refresh, 8000);
   })();
