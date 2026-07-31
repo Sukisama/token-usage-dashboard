@@ -36,6 +36,14 @@
 
       <div id="overviewCards" class="summary-grid"></div>
 
+      <div class="section">
+        <div class="section-header">
+          <h2>订阅平台限额</h2>
+          <button class="btn-text" id="ovGoSubs">管理订阅 →</button>
+        </div>
+        <div id="subscriptionQuotas"></div>
+      </div>
+
       <div class="section" id="compareSection">
         <div class="section-header"><h2>环比对比</h2></div>
         <div id="compareBar"></div>
@@ -169,6 +177,7 @@
     renderHeatmap();
     renderRankings();
     renderComposition();
+    renderSubscriptionQuotas();
 
     // Hourly chart for today
     const today = new Date().toISOString().split('T')[0];
@@ -209,11 +218,7 @@
   function renderCompare() {
     const el = document.getElementById('compareBar');
     if (!el) return;
-    const daily = _dailyData;
-    if (!daily || daily.length < 2) {
-      el.innerHTML = '<div class="empty-state">数据不足，无法计算环比</div>';
-      return;
-    }
+    const daily = _dailyData || [];
 
     // Sort ascending by date for aggregation
     const sorted = [...daily].sort((a, b) => a.date.localeCompare(b.date));
@@ -317,23 +322,40 @@
     // Agent ranking
     const agentEl = document.getElementById('agentRanking');
     const agents = _summaryData.byAgent || [];
-    const totalTokens = agents.reduce((s, a) => s + a.total_tokens, 0) || 1;
-    const topAgents = agents.slice(0, 8);
-    let agentHtml = '';
-    for (const a of topAgents) {
-      const pct = (a.total_tokens / totalTokens) * 100;
-      const color = F.agentColor(a.agent);
-      agentHtml += `
-        <div class="rank-row" data-agent="${F.esc(a.agent)}">
-          <span class="agent-dot" style="background:${color}"></span>
-          <span class="rank-name">${F.esc(a.agent)}</span>
-          <div class="rank-bar"><div class="rank-bar-fill" style="width:${pct}%;background:${color}"></div></div>
-          <span class="rank-val">${F.formatNumber(a.total_tokens)}</span>
-          <span class="rank-pct">${pct.toFixed(1)}%</span>
-        </div>
-      `;
+    if (agents.length === 0) {
+      // Show 8 placeholder rows at 0% so the layout still looks alive.
+      let placeholder = '';
+      for (let i = 0; i < 4; i++) {
+        placeholder += `
+          <div class="rank-row">
+            <span class="agent-dot" style="background:var(--border)"></span>
+            <span class="rank-name" style="color:var(--text-secondary)">—</span>
+            <div class="rank-bar"><div class="rank-bar-fill" style="width:0%"></div></div>
+            <span class="rank-val">0</span>
+            <span class="rank-pct">0%</span>
+          </div>
+        `;
+      }
+      agentEl.innerHTML = placeholder;
+    } else {
+      const totalTokens = agents.reduce((s, a) => s + a.total_tokens, 0) || 1;
+      const topAgents = agents.slice(0, 8);
+      let agentHtml = '';
+      for (const a of topAgents) {
+        const pct = (a.total_tokens / totalTokens) * 100;
+        const color = F.agentColor(a.agent);
+        agentHtml += `
+          <div class="rank-row" data-agent="${F.esc(a.agent)}">
+            <span class="agent-dot" style="background:${color}"></span>
+            <span class="rank-name">${F.esc(a.agent)}</span>
+            <div class="rank-bar"><div class="rank-bar-fill" style="width:${pct}%;background:${color}"></div></div>
+            <span class="rank-val">${F.formatNumber(a.total_tokens)}</span>
+            <span class="rank-pct">${pct.toFixed(1)}%</span>
+          </div>
+        `;
+      }
+      agentEl.innerHTML = agentHtml;
     }
-    agentEl.innerHTML = agentHtml || '<div class="empty-state">暂无数据</div>';
     agentEl.querySelectorAll('.rank-row').forEach(row => {
       row.addEventListener('click', () => {
         const agent = row.dataset.agent;
@@ -344,55 +366,71 @@
     // Model ranking
     const modelEl = document.getElementById('modelRanking');
     const models = _modelUsage || [];
-    const modelTotal = models.reduce((s, m) => s + m.total_tokens, 0) || 1;
-    const topModels = models.slice(0, 8);
-    let modelHtml = '';
-    for (const m of topModels) {
-      const pct = (m.total_tokens / modelTotal) * 100;
-      const color = F.modelColor(m.model);
-      modelHtml += `
-        <div class="rank-row">
-          <span class="rank-swatch" style="background:${color}"></span>
-          <span class="rank-name" title="${F.esc(m.model)}">${F.esc(m.model) || '\u2014'}</span>
-          <div class="rank-bar"><div class="rank-bar-fill" style="width:${pct}%;background:${color}"></div></div>
-          <span class="rank-val">${F.formatNumber(m.total_tokens)}</span>
-          <span class="rank-pct">${pct.toFixed(1)}%</span>
-        </div>
-      `;
+    if (models.length === 0) {
+      let placeholder = '';
+      for (let i = 0; i < 4; i++) {
+        placeholder += `
+          <div class="rank-row">
+            <span class="rank-swatch" style="background:var(--border)"></span>
+            <span class="rank-name" style="color:var(--text-secondary)">—</span>
+            <div class="rank-bar"><div class="rank-bar-fill" style="width:0%"></div></div>
+            <span class="rank-val">0</span>
+            <span class="rank-pct">0%</span>
+          </div>
+        `;
+      }
+      modelEl.innerHTML = placeholder;
+    } else {
+      const modelTotal = models.reduce((s, m) => s + m.total_tokens, 0) || 1;
+      const topModels = models.slice(0, 8);
+      let modelHtml = '';
+      for (const m of topModels) {
+        const pct = (m.total_tokens / modelTotal) * 100;
+        const color = F.modelColor(m.model);
+        modelHtml += `
+          <div class="rank-row">
+            <span class="rank-swatch" style="background:${color}"></span>
+            <span class="rank-name" title="${F.esc(m.model)}">${F.esc(m.model) || '\u2014'}</span>
+            <div class="rank-bar"><div class="rank-bar-fill" style="width:${pct}%;background:${color}"></div></div>
+            <span class="rank-val">${F.formatNumber(m.total_tokens)}</span>
+            <span class="rank-pct">${pct.toFixed(1)}%</span>
+          </div>
+        `;
+      }
+      modelEl.innerHTML = modelHtml;
     }
-    modelEl.innerHTML = modelHtml || '<div class="empty-state">暂无数据</div>';
   }
 
   function renderComposition() {
     const el = document.getElementById('tokenComposition');
     if (!el) return;
     const o = _summaryData.overall;
-    const parts = [
+    const allParts = [
       { label: 'Input', val: o.input_tokens, color: '#f97316' },
       { label: 'Output', val: o.output_tokens, color: '#f472b6' },
       { label: '缓存读取', val: o.cache_read_tokens, color: '#38bdf8' },
       { label: '缓存写入', val: o.cache_creation_tokens, color: '#a78bfa' },
       { label: '推理', val: o.reasoning_tokens, color: '#4ade80' },
-    ].filter(p => p.val > 0);
-
+    ];
+    // Always show every part in the legend (with 0s when no data) so the layout
+    // is consistent regardless of whether the DB has any usage yet.
+    const parts = allParts.filter(p => p.val > 0);
     const total = parts.reduce((s, p) => s + p.val, 0);
-    if (total === 0) {
-      el.innerHTML = '<div class="empty-state">暂无数据</div>';
-      return;
-    }
 
-    // Horizontal stacked bar
+    // Horizontal stacked bar — all parts at 0 width when total === 0.
     let barHtml = '<div class="comp-bar">';
-    for (const p of parts) {
-      const pct = (p.val / total) * 100;
-      barHtml += `<div class="comp-seg" style="width:${pct}%;background:${p.color}" title="${p.label}: ${F.formatNumber(p.val)} (${pct.toFixed(1)}%)"></div>`;
+    if (total > 0) {
+      for (const p of parts) {
+        const pct = (p.val / total) * 100;
+        barHtml += `<div class="comp-seg" style="width:${pct}%;background:${p.color}" title="${p.label}: ${F.formatNumber(p.val)} (${pct.toFixed(1)}%)"></div>`;
+      }
     }
     barHtml += '</div>';
 
-    // Legend
+    // Legend shows every category, even at 0, so the row is stable.
     let legendHtml = '<div class="comp-legend">';
-    for (const p of parts) {
-      const pct = (p.val / total) * 100;
+    for (const p of allParts) {
+      const pct = total > 0 ? (p.val / total) * 100 : 0;
       legendHtml += `
         <div class="comp-item">
           <span class="comp-swatch" style="background:${p.color}"></span>
@@ -409,6 +447,115 @@
 
   async function refresh() {
     await loadData();
+  }
+
+  const SUB_PLATFORM_COLORS = {
+    anthropic: '#d97757',
+    'openai-codex': '#10a37f',
+    kimi: '#1f6feb',
+    'google-antigravity': '#4285f4',
+    minimax: '#f59e0b',
+  };
+  const SUB_PLATFORM_LABELS = {
+    anthropic: 'Anthropic Claude',
+    'openai-codex': 'OpenAI Codex',
+    kimi: 'Kimi',
+    'google-antigravity': 'Google Antigravity',
+    minimax: 'MiniMax',
+  };
+
+  function pctColor(pct) {
+    if (pct >= 90) return '#ef4444';
+    if (pct >= 70) return '#f59e0b';
+    return '#4ade80';
+  }
+
+  // Compact platform-quota bars for the Overview page. Each row shows the
+  // platform color, 5h and weekly percent bars + reset countdowns. When no
+  // subscriptions are configured, we show a friendly hint instead of an
+  // empty box so the section is never visually dead.
+  async function renderSubscriptionQuotas() {
+    const el = document.getElementById('subscriptionQuotas');
+    if (!el) return;
+    const goBtn = document.getElementById('ovGoSubs');
+    if (goBtn) goBtn.onclick = () => window.Router.go('/subscriptions');
+
+    let subs = [];
+    try { subs = await API.getSubscriptions(); } catch { subs = []; }
+
+    if (!subs.length) {
+      el.innerHTML = `
+        <div class="sub-quota-empty">
+          <span>尚无订阅配置</span>
+          <button class="btn-secondary" id="ovAddSubBtn">添加订阅</button>
+        </div>`;
+      const addBtn = document.getElementById('ovAddSubBtn');
+      if (addBtn) addBtn.onclick = () => window.Router.go('/subscriptions');
+      return;
+    }
+
+    let html = '<div class="sub-quota-list">';
+    for (const s of subs) {
+      const color = SUB_PLATFORM_COLORS[s.platform] || '#888';
+      const label = SUB_PLATFORM_LABELS[s.platform] || s.platform;
+      html += `
+        <div class="sub-quota-row">
+          <div class="sub-quota-head">
+            <span class="agent-dot" style="background:${color}"></span>
+            <span class="sub-quota-name">${F.esc(label)}</span>
+            <span class="sub-quota-plan">${F.esc(s.plan_name || '—')}</span>
+          </div>
+          <div class="sub-quota-bars">
+            ${renderQuotaPair('5 小时', s.limit5h_used, s.limit5h_total, s.limit5h_percent, s.limit5h_reset)}
+            ${renderQuotaPair('每周', s.limit_week_used, s.limit_week_total, s.limit_week_percent, s.limit_week_reset)}
+          </div>
+        </div>
+      `;
+    }
+    html += '</div>';
+    el.innerHTML = html;
+  }
+
+  function renderQuotaPair(label, used, total, percent, reset) {
+    const hasPercent = typeof percent === 'number' && !isNaN(percent);
+    const pct = hasPercent ? percent : (total > 0 ? Math.min(100, (used / total) * 100) : 0);
+    const color = pctColor(pct);
+
+    let resetText = '';
+    if (reset) {
+      const resetDate = new Date(reset);
+      if (!isNaN(resetDate.getTime())) {
+        const diffMs = resetDate - Date.now();
+        if (diffMs >= 0) {
+          const diffH = Math.floor(diffMs / 3600000);
+          const diffM = Math.floor((diffMs % 3600000) / 60000);
+          if (diffH >= 24) resetText = `${Math.floor(diffH / 24)} 天后`;
+          else if (diffH > 0) resetText = `${diffH}h${diffM}m 后`;
+          else resetText = `${diffM}m 后`;
+        } else {
+          resetText = '已重置';
+        }
+      }
+    }
+
+    const sub = resetText
+      ? `<span class="sub-quota-reset">${F.esc(resetText)}</span>`
+      : '';
+
+    return `
+      <div class="sub-quota-pair">
+        <div class="sub-quota-pair-head">
+          <span class="sub-quota-pair-label">${F.esc(label)}</span>
+          <span class="sub-quota-pair-val">
+            <strong style="color:${color}">${pct.toFixed(1)}%</strong>
+            ${sub}
+          </span>
+        </div>
+        <div class="rank-bar">
+          <div class="rank-bar-fill" style="width:${pct}%;background:${color}"></div>
+        </div>
+      </div>
+    `;
   }
 
   window.Router.register('overview', { mount, unmount });

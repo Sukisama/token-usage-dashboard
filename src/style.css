@@ -1154,6 +1154,70 @@ body {
 .compare-table-wrap { overflow-x: auto; margin-bottom: 16px; }
 
 /* ============ Subscriptions tab ============ */
+
+/* Overview-page compact platform quota list */
+.sub-quota-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.sub-quota-row {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 14px;
+}
+.sub-quota-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.sub-quota-name {
+  font-weight: 600;
+  font-size: 13px;
+}
+.sub-quota-plan {
+  color: var(--text-secondary);
+  font-size: 11px;
+  margin-left: auto;
+}
+.sub-quota-bars {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+.sub-quota-pair-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 4px;
+}
+.sub-quota-pair-label {
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+.sub-quota-pair-val {
+  font-size: 11px;
+}
+.sub-quota-reset {
+  color: var(--text-secondary);
+  font-size: 10px;
+  margin-left: 6px;
+}
+.sub-quota-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 20px;
+  color: var(--text-secondary);
+  font-size: 13px;
+  background: var(--surface);
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+}
+
 .sub-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));

@@ -234,7 +234,8 @@
     // Prefer the upstream utilization percentage (what auto-collectors return);
     // fall back to a manual used/total ratio when percent is unavailable.
     const hasPercent = typeof percent === 'number' && !isNaN(percent);
-    const pct = hasPercent ? percent : (total > 0 ? Math.min(100, (used / total) * 100) : 0);
+    const hasTotal = total > 0;
+    const pct = hasPercent ? percent : (hasTotal ? Math.min(100, (used / total) * 100) : 0);
     let color = '#4ade80';
     if (pct >= 90) color = '#ef4444';
     else if (pct >= 70) color = '#f59e0b';
@@ -259,22 +260,27 @@
       }
     }
 
-    const detail = hasPercent
-      ? (total > 0 ? `${used} / ${total}` : '')
-      : (total > 0 ? `${used} / ${total}` : '');
+    const detail = hasTotal ? `${used} / ${total}` : '';
+
+    // When there is no data, still render a thin "0%" progress bar so the
+    // layout matches the rest of the card instead of collapsing.
+    const subStatus = !hasPercent && !hasTotal
+      ? '<span style="color:var(--text-secondary);font-size:11px;margin-left:4px">未配置</span>'
+      : '';
 
     return `
       <div class="sub-limit">
         <div class="sub-limit-header">
           <span class="sub-limit-label">${F.esc(label)}</span>
           <span class="sub-limit-val">
-            <strong>${pct.toFixed(1)}%</strong>
+            <strong style="color:${color}">${pct.toFixed(1)}%</strong>
+            ${subStatus}
             ${detail ? ' · ' + detail + ' ' : ''}
             ${resetText ? '<span style="color:var(--text-secondary);font-size:11px">· ' + F.esc(resetText) + '</span>' : ''}
           </span>
         </div>
         <div class="rank-bar">
-          <div class="rank-bar-fill" style="width:${pct}%;background:${color}"></div>
+          <div class="rank-bar-fill" style="width:${pct}%;background:${color};opacity:${(!hasPercent && !hasTotal) ? 0.3 : 1}"></div>
         </div>
       </div>
     `;
