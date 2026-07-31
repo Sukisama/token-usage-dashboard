@@ -72,16 +72,11 @@ module.exports = {
 };
 
 /**
- * fetch() wrapper with a HARD timeout. AbortSignal.timeout alone has been
- * observed to not interrupt a hung TCP connect (e.g. when a proxy swallows the
- * SYN), which would freeze the dashboard's refresh. An explicit AbortController
- * + setTimeout guarantees the call rejects by `ms`, so the refresh handler can
- * always proceed. The underlying socket may linger briefly, but the promise
- * resolves and the server stays responsive.
+ * fetch() wrapper with a HARD timeout and proxy support. Delegates to
+ * proxy.proxyFetch, which routes overseas hosts through the local Clash proxy
+ * (Node's global fetch ignores HTTP_PROXY env) and enforces an AbortController
+ * timeout so a hung connect can never freeze the refresh handler.
  */
 function safeFetch(url, opts = {}, ms = 8000) {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), ms);
-  return fetch(url, { ...opts, signal: controller.signal })
-    .finally(() => clearTimeout(timer));
+  return require('./proxy').proxyFetch(url, opts, ms);
 }

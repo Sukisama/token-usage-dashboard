@@ -23,55 +23,97 @@ function bucket(rec) {
 }
 
 async function fetch(sub) {
-  const cred = detectClaudeToken() || readOcxToken('anthropic');
-  if (!cred || !cred.access) {
-    return { status: 'auth_expired', message: '未检测到本地 Claude 登录态（Keychain / ~/.claude/.credentials.json / opencodex）。请先登录 Claude Code 或 opencodex。' };
+  // Collect candidate tokens from every local source. The Keychain may hold a
+  // STALE Claude Code token while opencodex holds a FRESH one (or vice versa),
+  // so we try each against the usage API and use the first that returns 200.
+  const candidates = [];
+  const kc = detectClaudeToken();
+  if (kc && kc.access) candidates.push({ access: kc.access, refresh: kc.refresh, expires: kc.expires, src: 'keychain' });
+  const oc = readOcxToken('anthropic');
+  if (oc && oc.access && !candidates.some(c => c.access === oc.access)) {
+    candidates.push({ access: oc.access, refresh: oc.refresh, expires: 0, src: 'opencodex' });
+  }
+  if (candidates.length === 0) {
+    return { status: 'auth_expired', message: '未检测到本地 Claude 登录态（Keychain / ~/.claude / opencodex）。请点「验证登录」运行 ocx login anthropic。' };
   }
 
-  let access = cred.access;
-  // Proactively refresh if the token looks expired.
-  if (cred.expires && cred.expires < Date.now() + 60_000 && cred.refresh) {
-    const refreshed = await refreshClaudeToken(cred.refresh);
-    if (refreshed) access = refreshed;
+  let lastErr = '';
+  for (const c of candidates) {
+    let access = c.access;
+    // Proactively refresh if the token looks expired.
+    if (c.expires && c.expires < Date.now() + 60_000 && c.refresh) {
+      const refreshed = await refreshClaudeToken(c.refresh);
+      if (refreshed) access = refreshed;
+    }
+
+    let resp;
+    try {
+      resp = await safeFetch('https://api.anthropic.com/api/oauth/usage', {
+        headers: {
+          Accept: 'application/json, text/plain, */*',
+          'Content-Type': 'application/json',
+          'User-Agent': 'claude-cli/2.1.63 (external, cli)',
+          'anthropic-beta': ANTHROPIC_BETA,
+          Authorization: `Bearer ${access}`,
+        },
+      }, REQUEST_TIMEOUT_MS);
+    } catch (err) {
+      lastErr = '请求 Anthropic 用量接口失败: ' + err.message;
+      continue; // try next candidate
+    }
+
+    if (resp.status === 401 || resp.status === 403) {
+      // Maybe expired — try a refresh once, then move to the next candidate.
+      if (c.refresh) {
+        const refreshed = await refreshClaudeToken(c.refresh);
+        if (refreshed) {
+          try {
+            resp = await safeFetch('https://api.anthropic.com/api/oauth/usage', {
+              headers: {
+                Accept: 'application/json, text/plain, */*',
+                'Content-Type': 'application/json',
+                'User-Agent': 'claude-cli/2.1.63 (external, cli)',
+                'anthropic-beta': ANTHROPIC_BETA,
+                Authorization: `Bearer ${refreshed}`,
+              },
+            }, REQUEST_TIMEOUT_MS);
+            if (resp.ok) return parseOk(resp, sub);
+          } catch (err) {
+            lastErr = '请求 Anthropic 用量接口失败: ' + err.message;
+            continue;
+          }
+        }
+      }
+      lastErr = `Claude 登录态已过期（${c.src}），请点「验证登录」运行 ocx login anthropic。`;
+      continue; // try next candidate
+    }
+    if (!resp.ok) {
+      lastErr = `Anthropic 返回 ${resp.status}`;
+      continue;
+    }
+
+    return parseOk(resp, sub);
   }
 
-  let resp;
-  try {
-    resp = await safeFetch('https://api.anthropic.com/api/oauth/usage', {
-      headers: {
-        Accept: 'application/json, text/plain, */*',
-        'Content-Type': 'application/json',
-        'User-Agent': 'claude-cli/2.1.63 (external, cli)',
-        'anthropic-beta': ANTHROPIC_BETA,
-        Authorization: `Bearer ${access}`,
-      },
-    }, REQUEST_TIMEOUT_MS);
-  } catch (err) {
-    return { status: 'error', message: '请求 Anthropic 用量接口失败: ' + err.message };
-  }
+  return { status: 'auth_expired', message: lastErr || 'Claude 所有本地登录态均不可用，请点「验证登录」重新登录。' };
+}
 
-  if (resp.status === 401 || resp.status === 403) {
-    return { status: 'auth_expired', message: 'Claude 登录态已过期，请重新登录 Claude Code。' };
-  }
-  if (!resp.ok) {
-    return { status: 'error', message: `Anthropic 返回 ${resp.status}` };
-  }
-
-  const body = asRecord(await resp.json().catch(() => null));
-  if (!body) return { status: 'error', message: 'Anthropic 返回空响应' };
-
-  const fiveHour = bucket(body.five_hour);
-  const sevenDay = bucket(body.seven_day);
-
-  return {
-    fiveHour: fiveHour ? window({ percent: fiveHour.percent, resetAt: fiveHour.resetAt }) : window({}),
-    weekly: sevenDay ? window({ percent: sevenDay.percent, resetAt: sevenDay.resetAt }) : window({}),
-    monthly: window({}),
-    plan_name: sub.plan_name || '',
-    monthly_cost: sub.monthly_cost || 0,
-    status: 'ok',
-    message: '',
-  };
+function parseOk(resp, sub) {
+  return resp.json().catch(() => null).then(body => {
+    body = asRecord(body);
+    if (!body) return { status: 'error', message: 'Anthropic 返回空响应' };
+    const fiveHour = bucket(body.five_hour);
+    const sevenDay = bucket(body.seven_day);
+    return {
+      fiveHour: fiveHour ? window({ percent: fiveHour.percent, resetAt: fiveHour.resetAt }) : window({}),
+      weekly: sevenDay ? window({ percent: sevenDay.percent, resetAt: sevenDay.resetAt }) : window({}),
+      monthly: window({}),
+      plan_name: sub.plan_name || '',
+      monthly_cost: sub.monthly_cost || 0,
+      status: 'ok',
+      message: '',
+    };
+  });
 }
 
 module.exports = { platform: 'anthropic', label: 'Anthropic Claude', fetch };
