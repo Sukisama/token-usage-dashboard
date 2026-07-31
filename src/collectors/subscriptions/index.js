@@ -1,38 +1,43 @@
 /**
- * subscriptions/index.js — Subscription platform collectors registry
+ * subscriptions/index.js — Subscription platform collectors registry.
  *
  * Each collector exports:
+ *   { platform, label, fetch }
+ * where fetch(sub) returns a normalized snapshot:
  *   {
- *     platform: 'anthropic' | 'openai-codex' | 'kimi' | 'google-antigravity' | 'minimax',
- *     label: 'Anthropic Claude',
- *     // Returns normalized snapshot for the given subscription row.
- *     fetch: async (sub) => ({
- *       limit5h_used, limit5h_total, limit5h_reset,
- *       limit_week_used, limit_week_total, limit_week_reset,
- *       plan_name, cycle_start, cycle_end, monthly_cost,
- *       status: 'ok' | 'auth_expired' | 'rate_limited' | 'error' | 'unavailable',
- *       message: 'human-readable'
- *     })
+ *     fiveHour: { used, total, percent, resetAt },   // resetAt = epoch-ms or undefined
+ *     weekly:   { used, total, percent, resetAt },
+ *     monthly:  { used, total, percent, resetAt },
+ *     plan_name, monthly_cost, cycle_start, cycle_end,
+ *     status: 'ok' | 'auth_expired' | 'rate_limited' | 'error' | 'unavailable',
+ *     message
  *   }
+ * Upstream APIs only return utilization percentages + reset timestamps, so
+ * `percent` is the primary signal; `used`/`total` are 0 unless the endpoint
+ * exposes absolute numbers (it generally does not).
  */
 'use strict';
 
-const collectors = [
-  // Real collectors (registered here as they become available).
-  // require('./anthropic'),
-  // require('./openai-codex'),
-  // require('./kimi'),
-  // require('./google-antigravity'),
-  // require('./minimax'),
-];
+const anthropic = require('./anthropic');
+const openaiCodex = require('./openai-codex');
+const kimi = require('./kimi');
+const googleAntigravity = require('./google-antigravity');
+const minimax = require('./minimax');
 
-// Refresh a single subscription. Returns the snapshot or throws.
+const collectors = [anthropic, openaiCodex, kimi, googleAntigravity, minimax];
+
+const byPlatform = collectors.reduce((m, c) => { m[c.platform] = c; return m; }, {});
+
+// Refresh a single subscription. Returns the snapshot or a normalized error snapshot.
 async function refreshSubscription(sub) {
-  const collector = collectors.find(c => c.platform === sub.platform);
+  const collector = byPlatform[sub.platform];
   if (!collector) {
     return {
+      fiveHour: { used: 0, total: 0, percent: null },
+      weekly: { used: 0, total: 0, percent: null },
+      monthly: { used: 0, total: 0, percent: null },
       status: 'unavailable',
-      message: `${sub.platform} 平台采集器尚未实现，请手动填写限额`
+      message: `${sub.platform} 平台采集器尚未实现`,
     };
   }
   try {
@@ -40,8 +45,11 @@ async function refreshSubscription(sub) {
     return result;
   } catch (err) {
     return {
+      fiveHour: { used: 0, total: 0, percent: null },
+      weekly: { used: 0, total: 0, percent: null },
+      monthly: { used: 0, total: 0, percent: null },
       status: 'error',
-      message: err && err.message ? err.message : String(err)
+      message: err && err.message ? err.message : String(err),
     };
   }
 }

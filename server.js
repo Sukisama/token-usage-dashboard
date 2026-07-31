@@ -101,25 +101,13 @@ async function refreshAllSubscriptions(platformFilter = null) {
   for (const sub of subs) {
     const result = await refreshSubscription(sub);
     if (result.status === 'unavailable') {
-      // Not a failure — just means we don't have a collector yet.
-      db.updateSubscriptionLimits(sub.id, {
-        limit5h_used: sub.limit5h_used,
-        limit5h_total: sub.limit5h_total,
-        limit5h_reset: sub.limit5h_reset,
-        limit_week_used: sub.limit_week_used,
-        limit_week_total: sub.limit_week_total,
-        limit_week_reset: sub.limit_week_reset
-      }, 'unavailable', result.message || '暂未实现自动采集');
+      // Not a failure — just means we don't have a collector for this platform.
+      db.updateSubscriptionLimits(sub.id, { fiveHour: {}, weekly: {}, monthly: {} },
+        'unavailable', result.message || '暂未实现自动采集', sub.source);
       skipped++;
     } else if (result.status === 'ok') {
-      db.updateSubscriptionLimits(sub.id, {
-        limit5h_used: result.limit5h_used ?? sub.limit5h_used,
-        limit5h_total: result.limit5h_total ?? sub.limit5h_total,
-        limit5h_reset: result.limit5h_reset ?? sub.limit5h_reset,
-        limit_week_used: result.limit_week_used ?? sub.limit_week_used,
-        limit_week_total: result.limit_week_total ?? sub.limit_week_total,
-        limit_week_reset: result.limit_week_reset ?? sub.limit_week_reset
-      }, 'ok', '');
+      const source = `auto:${sub.platform}`;
+      db.updateSubscriptionLimits(sub.id, result, 'ok', result.message || '', source);
       // Update plan info if the collector returned fresher data.
       const updates = {};
       if (result.plan_name) updates.plan_name = result.plan_name;
@@ -132,14 +120,9 @@ async function refreshAllSubscriptions(platformFilter = null) {
       }
       success++;
     } else {
-      db.updateSubscriptionLimits(sub.id, {
-        limit5h_used: sub.limit5h_used,
-        limit5h_total: sub.limit5h_total,
-        limit5h_reset: sub.limit5h_reset,
-        limit_week_used: sub.limit_week_used,
-        limit_week_total: sub.limit_week_total,
-        limit_week_reset: sub.limit_week_reset
-      }, result.status, result.message || '');
+      // auth_expired / rate_limited / error — keep the last good snapshot, just mark status.
+      db.updateSubscriptionLimits(sub.id, { fiveHour: {}, weekly: {}, monthly: {} },
+        result.status, result.message || '', sub.source);
       failed++;
     }
   }

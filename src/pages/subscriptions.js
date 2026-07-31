@@ -144,7 +144,8 @@
         <div class="empty-state">
           还没有订阅。点击右上角"添加订阅"开始。<br>
           <span style="font-size:12px;color:var(--text-secondary)">
-            提示：可以从各平台设置页面复制 Cookie，粘贴到订阅卡片里即可自动刷新限额。
+            提示：保存后点击卡片上的 ⟳ 即可自动读取本机已登录平台的用量限额
+            （Anthropic / Codex 来自本地登录态，Kimi / Antigravity 来自 opencodex）。
           </span>
         </div>`;
       return;
@@ -200,8 +201,9 @@
         <div class="sub-source">${sourceBadge}</div>
 
         <div class="sub-limits">
-          ${renderLimitBar('5 小时限额', s.limit5h_used, s.limit5h_total, s.limit5h_reset)}
-          ${renderLimitBar('每周限额', s.limit_week_used, s.limit_week_total, s.limit_week_reset)}
+          ${renderLimitBar('5 小时限额', s.limit5h_used, s.limit5h_total, s.limit5h_percent, s.limit5h_reset)}
+          ${renderLimitBar('每周限额', s.limit_week_used, s.limit_week_total, s.limit_week_percent, s.limit_week_reset)}
+          ${s.limit_month_percent != null ? renderLimitBar('每月限额', s.limit_month_used, s.limit_month_total, s.limit_month_percent, s.limit_month_reset) : ''}
         </div>
 
         ${s.last_check_status && s.last_check_status !== 'ok' && s.last_check_message ? `
@@ -212,8 +214,11 @@
     return html;
   }
 
-  function renderLimitBar(label, used, total, reset) {
-    const pct = total > 0 ? Math.min(100, (used / total) * 100) : 0;
+  function renderLimitBar(label, used, total, percent, reset) {
+    // Prefer the upstream utilization percentage (what auto-collectors return);
+    // fall back to a manual used/total ratio when percent is unavailable.
+    const hasPercent = typeof percent === 'number' && !isNaN(percent);
+    const pct = hasPercent ? percent : (total > 0 ? Math.min(100, (used / total) * 100) : 0);
     let color = '#4ade80';
     if (pct >= 90) color = '#ef4444';
     else if (pct >= 70) color = '#f59e0b';
@@ -238,18 +243,22 @@
       }
     }
 
+    const detail = hasPercent
+      ? (total > 0 ? `${used} / ${total}` : '')
+      : (total > 0 ? `${used} / ${total}` : '');
+
     return `
       <div class="sub-limit">
         <div class="sub-limit-header">
           <span class="sub-limit-label">${F.esc(label)}</span>
           <span class="sub-limit-val">
-            ${total > 0
-              ? `<strong>${pct.toFixed(1)}%</strong> · ${used} / ${total} ${resetText ? '<span style="color:var(--text-secondary);font-size:11px">· ' + F.esc(resetText) + '</span>' : ''}`
-              : '<span style="color:var(--text-secondary);font-size:12px">未填写限额</span>'}
+            <strong>${pct.toFixed(1)}%</strong>
+            ${detail ? ' · ' + detail + ' ' : ''}
+            ${resetText ? '<span style="color:var(--text-secondary);font-size:11px">· ' + F.esc(resetText) + '</span>' : ''}
           </span>
         </div>
         <div class="rank-bar">
-          ${total > 0 ? `<div class="rank-bar-fill" style="width:${pct}%;background:${color}"></div>` : ''}
+          <div class="rank-bar-fill" style="width:${pct}%;background:${color}"></div>
         </div>
       </div>
     `;
@@ -366,20 +375,10 @@
               </div>
             </div>
 
-            <details style="margin-top:8px">
-              <summary style="cursor:pointer;color:var(--brand);font-size:13px">
-                ⚡ 自动同步（粘贴 Cookie，启用自动刷新限额）
-              </summary>
-              <div class="form-row" style="margin-top:10px">
-                <label>Cookie JSON</label>
-                <textarea id="subCredentials" rows="3" placeholder='{"sessionKey":"..."}'
-                          style="font-family:monospace;font-size:12px">${F.esc(sub?.credentials || '')}</textarea>
-                <span class="hint">
-                  从浏览器 DevTools → Application → Cookies 复制需要的键值，格式化为 JSON。<br>
-                  Anthropic: <code>sessionKey</code> · Codex: <code>__Secure-next-auth.session-token</code> · Kimi: <code>access_token</code>
-                </span>
-              </div>
-            </details>
+            <p class="hint" style="margin-top:8px">
+              保存后点击卡片上的 ⟳ 即可自动抓取本机已登录平台的用量限额（基于本地登录态，无需手动填 Cookie）。
+              仅 MiniMax 暂不支持自动抓取，请手动填写限额。
+            </p>
 
             <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:20px">
               <button class="btn-secondary drill-close-btn">取消</button>
@@ -408,8 +407,7 @@
       limit5h_used: parseFloat(document.getElementById('sub5hUsed').value) || 0,
       limit5h_total: parseFloat(document.getElementById('sub5hTotal').value) || 0,
       limit_week_used: parseFloat(document.getElementById('subWeekUsed').value) || 0,
-      limit_week_total: parseFloat(document.getElementById('subWeekTotal').value) || 0,
-      credentials: document.getElementById('subCredentials').value || ''
+      limit_week_total: parseFloat(document.getElementById('subWeekTotal').value) || 0
     };
 
     if (_editing) fields.id = _editing.id;

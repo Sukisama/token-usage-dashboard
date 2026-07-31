@@ -93,6 +93,18 @@ async function init() {
   // ADD COLUMN is idempotent-safe via try/catch).
   try { db.exec('ALTER TABLE usage_records ADD COLUMN context_window INTEGER DEFAULT 0'); } catch { /* column exists */ }
 
+  // Subscription rate-limit columns added after the initial schema:
+  // monthly window + percent fields (upstream APIs return utilization %, not absolutes).
+  const subAlters = [
+    'ALTER TABLE subscriptions ADD COLUMN limit_month_used REAL DEFAULT 0',
+    'ALTER TABLE subscriptions ADD COLUMN limit_month_total REAL DEFAULT 0',
+    'ALTER TABLE subscriptions ADD COLUMN limit_month_reset TEXT',
+    'ALTER TABLE subscriptions ADD COLUMN limit5h_percent REAL',
+    'ALTER TABLE subscriptions ADD COLUMN limit_week_percent REAL',
+    'ALTER TABLE subscriptions ADD COLUMN limit_month_percent REAL',
+  ];
+  for (const sql of subAlters) { try { db.exec(sql); } catch { /* column exists */ } }
+
   save();
 }
 
@@ -716,18 +728,35 @@ function upsertSubscription(fields) {
 }
 
 // Update only the rate-limit snapshot for a subscription (called by collectors).
-function updateSubscriptionLimits(id, limits, status = 'ok', message = '') {
+// `snap` is the normalized collector output:
+//   { fiveHour:{used,total,percent,resetAt}, weekly:{...}, monthly:{...} }
+// `resetAt` values are epoch-ms; they are stored as ISO strings.
+// `source` is e.g. 'auto:anthropic' when a live fetch succeeded.
+function updateSubscriptionLimits(id, snap, status = 'ok', message = '', source = null) {
   const now = new Date().toISOString();
+  const iso = (ms) => {
+    if (ms === undefined || ms === null) return null;
+    const n = typeof ms === 'number' ? ms : Number(ms);
+    if (!Number.isFinite(n)) return null;
+    return new Date(n > 10_000_000_000 ? n : n * 1000).toISOString();
+  };
+  const fh = snap.fiveHour || {};
+  const wk = snap.weekly || {};
+  const mo = snap.monthly || {};
   db.run(`
     UPDATE subscriptions
-    SET limit5h_used = ?, limit5h_total = ?, limit5h_reset = ?,
-        limit_week_used = ?, limit_week_total = ?, limit_week_reset = ?,
+    SET limit5h_used = ?, limit5h_total = ?, limit5h_percent = ?, limit5h_reset = ?,
+        limit_week_used = ?, limit_week_total = ?, limit_week_percent = ?, limit_week_reset = ?,
+        limit_month_used = ?, limit_month_total = ?, limit_month_percent = ?, limit_month_reset = ?,
+        source = COALESCE(?, source),
         last_check_at = ?, last_check_status = ?, last_check_message = ?,
         updated_at = ?
     WHERE id = ?
   `, [
-    limits.limit5h_used ?? 0, limits.limit5h_total ?? 0, limits.limit5h_reset ?? null,
-    limits.limit_week_used ?? 0, limits.limit_week_total ?? 0, limits.limit_week_reset ?? null,
+    fh.used || 0, fh.total || 0, fh.percent ?? null, iso(fh.resetAt),
+    wk.used || 0, wk.total || 0, wk.percent ?? null, iso(wk.resetAt),
+    mo.used || 0, mo.total || 0, mo.percent ?? null, iso(mo.resetAt),
+    source,
     now, status, message, now,
     id
   ]);
