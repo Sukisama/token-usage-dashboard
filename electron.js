@@ -1,6 +1,7 @@
 const { app, BrowserWindow, globalShortcut, Tray, Menu, nativeImage } = require('electron');
 const path = require('path');
 const fs = require('fs');
+const http = require('http');
 const { spawn } = require('child_process');
 
 const PORT = 7373;
@@ -22,7 +23,7 @@ function createWindow() {
     }
   });
 
-  mainWindow.loadURL(`http://localhost:${PORT}`);
+  mainWindow.loadURL(`http://127.0.0.1:${PORT}`);
 
   mainWindow.on('close', (event) => {
     event.preventDefault();
@@ -44,16 +45,35 @@ function toggleWindow() {
   }
 }
 
-function startServer() {
-  const serverPath = path.join(__dirname, 'server.js');
-  serverProcess = spawn(process.execPath, [serverPath], {
+function pingServer() {
+  return new Promise(resolve => {
+    const req = http.get(`http://127.0.0.1:${PORT}/api/summary`, res => {
+      res.resume();
+      resolve(true);
+    });
+    req.on('error', () => resolve(false));
+    req.setTimeout(800, () => { req.destroy(); resolve(false); });
+  });
+}
+
+async function ensureServer() {
+  // Reuse an already-running server (e.g. spawned by the floating-orb widget)
+  // instead of starting a second one and fighting over port 7373.
+  if (await pingServer()) return;
+  serverProcess = spawn(process.execPath, [path.join(__dirname, 'server.js')], {
     cwd: __dirname,
-    stdio: 'inherit'
+    env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' },
+    stdio: 'ignore'
   });
 
   serverProcess.on('error', (err) => {
     console.error('Server failed to start:', err);
   });
+
+  for (let i = 0; i < 30; i++) {
+    if (await pingServer()) return;
+    await new Promise(r => setTimeout(r, 200));
+  }
 }
 
 function stopServer() {
@@ -92,10 +112,10 @@ function createTray() {
 }
 
 app.whenReady().then(async () => {
-  startServer();
+  await ensureServer();
 
   // Wait for server to be ready
-  await new Promise(resolve => setTimeout(resolve, 1200));
+  await new Promise(resolve => setTimeout(resolve, 600));
 
   createWindow();
   createTray();

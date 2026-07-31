@@ -3,7 +3,7 @@ const path = require('path');
 const os = require('os');
 const { readJsonLines, walkDir, formatTimestamp, safeInt, fileUnchanged, markFile } = require('./utils');
 
-const WORKBUDDY_DIR = path.join(os.homedir(), '.workbuddy');
+const WORKBUDDY_DIR = require('./paths').dir('workbuddy');
 
 function collect() {
   const records = [];
@@ -25,11 +25,28 @@ function collect() {
     const modelInfo = trace.modelInfo || {};
     const totalTokens = safeInt(trace.totalTokens || modelInfo.totalTokens);
     if (totalTokens === 0) continue;
-    const traceCached = safeInt(modelInfo.totalCachedTokens);
-    // A trace is an opaque summary; its per-field counts are unreliable (can
-    // exceed the trace total). Treat the non-cache remainder as one "real
-    // usage" blob (bucketed as input) so input+output always equals total.
-    const traceReal = Math.max(0, totalTokens - traceCached);
+
+    // Prefer the per-role counts from modelInfo — verified against real trace
+    // files, they are accurate and sum exactly to trace.totalTokens. The old
+    // "treat the remainder as one input blob" path is only a fallback for
+    // traces that don't expose modelInfo at all.
+    const miInput = safeInt(modelInfo.totalInputTokens);
+    const miOutput = safeInt(modelInfo.totalOutputTokens);
+    const miCached = safeInt(modelInfo.totalCachedTokens);
+
+    let inputTokens, outputTokens, cacheReadTokens, totalForRow;
+    if (miInput || miOutput || miCached) {
+      cacheReadTokens = miCached;
+      inputTokens = Math.max(0, miInput - miCached);   // non-cached input
+      outputTokens = miOutput;
+      totalForRow = miInput + miOutput;                // == trace.totalTokens
+    } else {
+      const traceCached = safeInt(modelInfo.totalCachedTokens);
+      cacheReadTokens = traceCached;
+      inputTokens = Math.max(0, totalTokens - traceCached);
+      outputTokens = 0;
+      totalForRow = inputTokens + traceCached;
+    }
 
     // Prefer the trace's own start time so re-scans stay idempotent (mtime
     // changes on rewrite would create duplicate rows and inflate totals).
@@ -41,13 +58,13 @@ function collect() {
       session_id: path.basename(file, '.json'),
       timestamp,
       model: Array.isArray(modelInfo.models) ? modelInfo.models.join(',') : null,
-      input_tokens: traceReal,
-      output_tokens: 0,
-      cache_read_tokens: traceCached,
+      input_tokens: inputTokens,
+      output_tokens: outputTokens,
+      cache_read_tokens: cacheReadTokens,
       cache_creation_tokens: 0,
       reasoning_tokens: 0,
       // Standard total = the trace's full token count (incl. cache reads).
-      total_tokens: traceReal + traceCached,
+      total_tokens: totalForRow,
       source_file: file
     });
   }

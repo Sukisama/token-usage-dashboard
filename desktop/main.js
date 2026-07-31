@@ -29,6 +29,7 @@ let dashboardWin = null;
 let tray = null;
 let serverProcess = null;
 let panelHiddenAt = 0;
+let orbOnTop = true;
 
 const ORB_SIZE = 112;      // window box; the glowing orb (62px) sits inside with halo margin
 const PANEL_W = 300;
@@ -38,7 +39,7 @@ const PANEL_H = 430;
 
 function pingServer() {
   return new Promise(resolve => {
-    const req = http.get(`http://localhost:${PORT}/api/summary`, res => {
+    const req = http.get(`http://127.0.0.1:${PORT}/api/summary`, res => {
       res.resume();
       resolve(true);
     });
@@ -87,7 +88,9 @@ function createOrb() {
     fullscreenable: false,
     webPreferences: { preload: path.join(__dirname, 'preload.js') }
   });
-  orbWin.setAlwaysOnTop(true, 'screen-saver');
+  // Default on top but at the 'floating' level (above normal windows, below
+  // modals/fullscreen) so it doesn't steal focus or block content. Toggleable.
+  orbWin.setAlwaysOnTop(orbOnTop, 'floating');
   // Float on every Space so clicking never yanks you to another desktop.
   orbWin.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true, skipTransformProcessType: true });
   orbWin.loadFile(path.join(__dirname, 'orb.html'));
@@ -157,18 +160,24 @@ function openDashboard() {
     minHeight: 600,
     resizable: true,
     movable: true,
-    title: 'Token 用量看板',
+    title: 'TokenDash',
     backgroundColor: '#0f0f11',
     icon: appIcon(),
     webPreferences: { nodeIntegration: false, contextIsolation: true }
   });
-  dashboardWin.loadURL(`http://localhost:${PORT}`);
+  dashboardWin.loadURL(`http://127.0.0.1:${PORT}`);
 }
 
 function toggleOrb() {
   if (!orbWin) return createOrb();
   if (orbWin.isVisible()) orbWin.hide();
   else { orbWin.show(); orbWin.focus(); }
+}
+
+function toggleOrbOnTop() {
+  orbOnTop = !orbOnTop;
+  if (orbWin) orbWin.setAlwaysOnTop(orbOnTop, 'floating');
+  buildTrayMenu();
 }
 
 // ---- tray -------------------------------------------------------------------
@@ -195,6 +204,7 @@ function buildTrayMenu() {
     { label: '打开完整看板', click: openDashboard },
     { type: 'separator' },
     { label: '悬浮球显示', submenu: metricItems },
+    { label: '置顶悬浮球', type: 'checkbox', checked: orbOnTop, click: toggleOrbOnTop },
     { type: 'separator' },
     { label: '退出', click: () => app.quit() }
   ]));
@@ -212,6 +222,7 @@ function popupOrbMenu() {
     { label: '显示 / 隐藏面板', click: togglePanel },
     { label: '打开完整看板', click: openDashboard },
     { label: '悬浮球显示', submenu: metricItems },
+    { label: '置顶悬浮球', type: 'checkbox', checked: orbOnTop, click: toggleOrbOnTop },
     { type: 'separator' },
     { label: '隐藏悬浮球', click: () => orbWin && orbWin.hide() },
     { label: '退出', click: () => app.quit() }
@@ -229,7 +240,7 @@ function createTray() {
     img = nativeImage.createEmpty();
   }
   tray = new Tray(img);
-  tray.setToolTip('Token 用量看板');
+  tray.setToolTip('TokenDash');
   buildTrayMenu();
   tray.on('click', togglePanel);
 }
@@ -256,8 +267,9 @@ ipcMain.on('app:set-orb-metric', (_e, m) => {
 // ---- lifecycle --------------------------------------------------------------
 
 app.whenReady().then(async () => {
-  const icon = appIcon();
-  if (icon && process.platform === 'darwin' && app.dock) app.dock.setIcon(icon);
+  // The orb lives in the menu bar / floating — hide it from the dock so it
+  // doesn't leave an extra app icon cluttering the Dock.
+  if (process.platform === 'darwin' && app.dock) app.dock.hide();
   await ensureServer();
   createOrb();
   createPanel();
@@ -265,6 +277,8 @@ app.whenReady().then(async () => {
 
   const hotkey = process.platform === 'darwin' ? 'Cmd+Shift+T' : 'Ctrl+Shift+T';
   globalShortcut.register(hotkey, togglePanel);
+  // Toggle the orb's always-on-top without digging into the tray menu.
+  globalShortcut.register(process.platform === 'darwin' ? 'Cmd+Shift+O' : 'Ctrl+Shift+O', toggleOrbOnTop);
 
   app.on('activate', () => { if (!orbWin) createOrb(); else orbWin.show(); });
 });

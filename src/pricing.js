@@ -1,18 +1,22 @@
 // Token pricing — USD per 1,000,000 tokens.
 //
-// ⚠️  EDIT THIS TABLE to match what you actually pay. The defaults are rough
-// public list prices and change often; treat every cost in the dashboard as an
-// estimate (the UI shows "≈"). A model that matches nothing here yields
-// cost = null and is shown as "—" — we never invent a number.
+// Prices are loaded from an external JSON file at
+// ~/.token-usage-dashboard/pricing.json when it exists, falling back to
+// the built-in DEFAULT_PRICES below.
 //
 // Matching is by case-insensitive substring against the model name, first hit
 // wins, so order from most specific to least specific.
 //
 // Fields: input / output are required. cacheRead / cacheWrite are optional; if
-// omitted they default to input*0.1 (read) and input*1.25 (write), which is the
-// typical Anthropic-style ratio.
+// omitted they default to input*0.1 (read) and input*1.25 (write).
 
-const PRICES = [
+const fs = require('fs');
+const path = require('path');
+const os = require('os');
+
+const PRICING_FILE = path.join(os.homedir(), '.token-usage-dashboard', 'pricing.json');
+
+const DEFAULT_PRICES = [
   // --- Anthropic Claude ---
   { match: 'opus',     input: 15,   output: 75,  cacheRead: 1.5,   cacheWrite: 18.75 },
   { match: 'sonnet',   input: 3,    output: 15,  cacheRead: 0.3,   cacheWrite: 3.75 },
@@ -32,6 +36,33 @@ const PRICES = [
   { match: 'gemini',   input: 1.25, output: 10 },
   { match: 'qwen',     input: 0.3,  output: 1.2 },
 ];
+
+// Load from external file if it exists; otherwise use defaults.
+function loadPrices() {
+  try {
+    if (fs.existsSync(PRICING_FILE)) {
+      const raw = fs.readFileSync(PRICING_FILE, 'utf8');
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+    }
+  } catch { /* fall through to defaults */ }
+  return DEFAULT_PRICES;
+}
+
+// Save prices to the external file.
+function savePrices(prices) {
+  const dir = path.dirname(PRICING_FILE);
+  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(PRICING_FILE, JSON.stringify(prices, null, 2));
+}
+
+// Currently active prices (re-read from file so server picks up edits live).
+let PRICES = loadPrices();
+
+// Force a reload (called after PUT /api/pricing).
+function reload() {
+  PRICES = loadPrices();
+}
 
 const PER_MILLION = 1_000_000;
 
@@ -56,4 +87,4 @@ function costOf(row) {
   return usd / PER_MILLION;
 }
 
-module.exports = { priceFor, costOf, PRICES };
+module.exports = { priceFor, costOf, reload, savePrices, get PRICES() { return PRICES; } };

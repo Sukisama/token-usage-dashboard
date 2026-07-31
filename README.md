@@ -1,4 +1,6 @@
-# Token Usage Dashboard
+# TokenDash
+
+> Token Usage Dashboard — 跨 Agent Token 用量统计本地看板
 
 A local dashboard that aggregates LLM token usage across multiple AI coding agents.
 

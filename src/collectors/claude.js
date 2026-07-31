@@ -3,7 +3,7 @@ const path = require('path');
 const os = require('os');
 const { readJsonLines, walkDir, formatTimestamp, safeInt, fileUnchanged, markFile } = require('./utils');
 
-const CLAUDE_DIR = path.join(os.homedir(), '.claude', 'projects');
+const CLAUDE_DIR = require('./paths').dir('claude');
 
 function collect() {
   const records = [];

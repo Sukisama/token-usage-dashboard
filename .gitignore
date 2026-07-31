@@ -16,3 +16,6 @@ build/
 
 # icon build intermediate
 assets/icon.iconset/
+
+# backups
+*.bak

@@ -3,7 +3,7 @@ const path = require('path');
 const os = require('os');
 const { readJsonLines, walkDir, formatTimestamp, parseDateFromPath, safeInt, fileUnchanged, markFile } = require('./utils');
 
-const CODEX_DIR = path.join(os.homedir(), '.codex', 'sessions');
+const CODEX_DIR = require('./paths').dir('codex');
 
 function collect() {
   const records = [];
@@ -40,8 +40,13 @@ function collect() {
       if (!usage) continue;
 
       let timestamp = formatTimestamp(line.timestamp);
-      if (!timestamp && dateFromPath) {
-        timestamp = new Date(`${dateFromPath}T00:00:00Z`).toISOString();
+      if (!timestamp) {
+        // Fall back to the file's mtime (granular), then the date parsed from
+        // the path, so timestamp-less sessions still get a distinct-enough key
+        // and don't all collapse onto midnight of the same day (which would let
+        // INSERT OR IGNORE drop collisions).
+        timestamp = formatTimestamp(fs.statSync(file).mtimeMs) ||
+          (dateFromPath ? new Date(`${dateFromPath}T00:00:00Z`).toISOString() : null);
       }
 
       // Codex `input_tokens` includes the cached portion; store only the
@@ -64,6 +69,7 @@ function collect() {
         // Standard total = all tokens processed (input incl. cached + output).
         // Same as the provider's own total_tokens.
         total_tokens: nonCachedIn + cachedIn + output,
+        context_window: safeInt(payload.info?.model_context_window),
         source_file: file
       });
     }

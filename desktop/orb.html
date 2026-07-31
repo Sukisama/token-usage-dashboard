@@ -138,10 +138,10 @@
   async function refresh() {
     labelEl.textContent = LABELS[metric] || '今日';
     try {
-      const res = await fetch(`http://localhost:${PORT}/api/period-summary?period=${metric}`);
+      const res = await fetch(`http://127.0.0.1:${PORT}/api/period-summary?period=${metric}`);
       const data = await res.json();
       valueEl.textContent = fmt(data.total_tokens);
-      applyHeat(data.todayHeatLevel || 0);
+      applyHeat(data.heatLevel || 0);
     } catch { /* server not up yet */ }
   }
 

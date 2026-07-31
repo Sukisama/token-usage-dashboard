@@ -1,3 +1,7 @@
+---
+disable: true
+---
+
 # Skill: Token Usage Dashboard
 
 跨 AI Agent Token 用量统计看板 Skill。

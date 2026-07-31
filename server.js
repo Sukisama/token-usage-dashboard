@@ -4,7 +4,9 @@ const path = require('path');
 const os = require('os');
 const { exec } = require('child_process');
 const db = require('./src/db');
+const pricing = require('./src/pricing');
 const collectors = require('./src/collectors');
+const { dirs: collectorDirs } = require('./src/collectors/paths');
 const { flushCache, resetCache } = require('./src/collectors/utils');
 
 const PORT = 7373;
@@ -12,11 +14,14 @@ const SRC_DIR = path.join(__dirname, 'src');
 const DB_PATH = path.join(os.homedir(), '.token-usage-dashboard', 'usage.db');
 
 // Agent log roots to watch for changes (auto-refresh the DB in near real time).
+// Flattened from per-agent lists in collectors.json so multi-source agents
+// (kimi-code CLI + Kimi desktop app) all get file watchers.
 const WATCH_DIRS = [
-  path.join(os.homedir(), '.codex', 'sessions'),
-  path.join(os.homedir(), '.claude', 'projects'),
-  path.join(os.homedir(), '.kimi-code', 'sessions'),
-  path.join(os.homedir(), '.workbuddy')
+  ...collectorDirs('codex'),
+  ...collectorDirs('claude'),
+  ...collectorDirs('kimi'),
+  ...collectorDirs('workbuddy'),
+  ...collectorDirs('cola')
 ];
 const AUTO_SCAN_DEBOUNCE = 3000;      // coalesce a burst of writes
 const AUTO_SCAN_MIN_INTERVAL = 10000; // never scan more often than this
@@ -143,10 +148,11 @@ async function handleApi(req, res) {
       // Needed after a collector fix so corrected model/timestamps replace the
       // old rows that INSERT OR IGNORE would otherwise keep.
       if (scanPromise) await scanPromise;   // let any in-flight scan finish
+      const backupPath = db.createRebuildBackup();
       db.clearAll();
       resetCache();
       const results = await runScan();
-      sendJson(res, results);
+      sendJson(res, { backupPath, results });
     } else if (req.url === '/api/summary') {
       sendJson(res, db.getSummary());
     } else if (req.url.startsWith('/api/period-summary')) {
@@ -159,6 +165,15 @@ async function handleApi(req, res) {
     } else if (req.url.startsWith('/api/daily-models')) {
       const url = new URL(req.url, `http://localhost:${PORT}`);
       sendJson(res, db.getDailyByModel(url.searchParams.get('agent') || 'all'));
+    } else if (req.url.startsWith('/api/daily-cost-agents')) {
+      const url = new URL(req.url, `http://localhost:${PORT}`);
+      const days = parseInt(url.searchParams.get('days') || '30', 10);
+      sendJson(res, db.getDailyCostByAgent(days));
+    } else if (req.url.startsWith('/api/daily-cost')) {
+      const url = new URL(req.url, `http://localhost:${PORT}`);
+      const agent = url.searchParams.get('agent') || 'all';
+      const days = parseInt(url.searchParams.get('days') || '30', 10);
+      sendJson(res, db.getDailyCost(agent, days));
     } else if (req.url.startsWith('/api/daily')) {
       const url = new URL(req.url, `http://localhost:${PORT}`);
       const agent = url.searchParams.get('agent') || 'all';
@@ -198,6 +213,24 @@ async function handleApi(req, res) {
       const buffer = Buffer.from(body.data, 'base64');
       const inserted = db.importFromBuffer(buffer);
       sendJson(res, { inserted });
+    } else if (req.url.startsWith('/api/hourly')) {
+      const url = new URL(req.url, `http://localhost:${PORT}`);
+      const agent = url.searchParams.get('agent') || 'all';
+      const date = url.searchParams.get('date') || null;
+      sendJson(res, db.getHourlyUsage(agent, date));
+    } else if (req.url === '/api/pricing' && req.method === 'GET') {
+      sendJson(res, pricing.PRICES);
+    } else if (req.url === '/api/pricing' && req.method === 'PUT') {
+      const body = await parseBody(req);
+      if (!Array.isArray(body.prices)) {
+        sendJson(res, { error: 'prices must be an array' }, 400);
+        return;
+      }
+      pricing.savePrices(body.prices);
+      pricing.reload();
+      sendJson(res, { ok: true, count: body.prices.length });
+    } else if (req.url === '/api/stats') {
+      sendJson(res, db.getDbStats());
     } else {
       sendJson(res, { error: 'Not found' }, 404);
     }
@@ -207,6 +240,16 @@ async function handleApi(req, res) {
 }
 
 const server = http.createServer(async (req, res) => {
+  // Only the local machine may read or mutate this dashboard. Binding to
+  // loopback already blocks the LAN; this host guard also rejects DNS-rebinding
+  // requests that arrive with an unexpected Host header.
+  const host = String(req.headers.host || '').toLowerCase();
+  if (host !== `localhost:${PORT}` && host !== `127.0.0.1:${PORT}` && host !== `[::1]:${PORT}`) {
+    res.writeHead(403, { 'Content-Type': 'text/plain' });
+    res.end('Forbidden');
+    return;
+  }
+
   // This server exposes your local token logs. Only allow the dashboard's own
   // origin so a random web page you visit can't read localhost:7373.
   const origin = req.headers.origin;
@@ -232,7 +275,7 @@ const server = http.createServer(async (req, res) => {
 async function start() {
   await db.init();
 
-  server.listen(PORT, () => {
+  server.listen(PORT, '127.0.0.1', () => {
     console.log(`Token 用量看板已启动: http://localhost:${PORT}`);
 
     // Fresh data on launch, then keep it fresh via file watchers.

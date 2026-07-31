@@ -13,27 +13,49 @@
 
   .card {
     position: absolute; inset: 10px;
-    /* frosted glass: blurs the desktop behind the rounded card */
     background: rgba(26,26,30,0.62);
     backdrop-filter: blur(26px) saturate(170%);
     -webkit-backdrop-filter: blur(26px) saturate(170%);
     border: 1px solid rgba(255,255,255,0.10);
     border-radius: 18px;
     box-shadow: 0 18px 48px rgba(0,0,0,.5), inset 0 1px 0 rgba(255,255,255,.08);
-    padding: 16px; display: flex; flex-direction: column; color: var(--text);
+    padding: 14px; display: flex; flex-direction: column; color: var(--text);
   }
-  .top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-  .top h1 { font-size: 14px; font-weight: 700; }
-  .top-right { display: flex; align-items: center; gap: 10px; }
-  .date { font-size: 11px; color: var(--text-2); white-space: nowrap; }
+
+  /* Tab bar */
+  .tab-bar {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 10px;
+  }
+  .tab-icons { display: flex; gap: 2px; }
+  .tab-btn {
+    width: 30px; height: 28px;
+    display: flex; align-items: center; justify-content: center;
+    border: none; border-radius: 7px;
+    background: transparent; color: var(--text-2);
+    cursor: pointer; transition: all .15s;
+  }
+  .tab-btn:hover { color: var(--text); background: var(--surface-2); }
+  .tab-btn.active { color: var(--brand-light); background: rgba(249,115,22,.12); }
+  .tab-btn svg { width: 15px; height: 15px; }
+
+  .tab-right { display: flex; align-items: center; gap: 6px; }
+  .date { font-size: 10px; color: var(--text-2); white-space: nowrap; }
   .icon-btn { width: 22px; height: 22px; border: none; background: transparent;
-    color: var(--text-2); font-size: 14px; cursor: pointer; line-height: 1;
+    color: var(--text-2); font-size: 13px; cursor: pointer; line-height: 1;
     display: flex; align-items: center; justify-content: center; border-radius: 6px; flex: 0 0 auto; }
   .icon-btn:hover { color: var(--text); background: var(--surface-2); }
   .icon-btn.active { color: var(--brand-light); }
 
-  .settings { margin-top: 10px; background: var(--surface-2); border: 1px solid var(--border);
-    border-radius: 10px; padding: 10px 12px; }
+  /* Tab content panels */
+  .tab-panel { display: none; flex: 1; flex-direction: column; overflow-y: auto; }
+  .tab-panel.active { display: flex; animation: fadeIn .2s; }
+
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+
+  /* Settings panel */
+  .settings { background: var(--surface-2); border: 1px solid var(--border);
+    border-radius: 10px; padding: 10px 12px; margin-bottom: 10px; }
   .settings-label { font-size: 11px; color: var(--text-2); margin-bottom: 8px; }
   .settings-opts { display: flex; gap: 5px; }
   .settings-opts button { flex: 1; padding: 5px 0; border: 1px solid var(--border);
@@ -42,32 +64,48 @@
   .settings-opts button.active { background: var(--brand); border-color: var(--brand); color: #fff; font-weight: 600; }
   .settings-hint { font-size: 10px; color: var(--text-2); margin-top: 8px; opacity: .8; }
 
-  .periods { display: flex; gap: 5px; margin-top: 12px; }
+  /* Period buttons */
+  .periods { display: flex; gap: 5px; margin-bottom: 10px; }
   .pbtn { flex: 1; padding: 5px 0; border: 1px solid var(--border); border-radius: 8px;
     background: var(--surface-2); color: var(--text-2); font-size: 12px; cursor: pointer;
     transition: all .15s; }
   .pbtn:hover { color: var(--text); }
   .pbtn.active { background: var(--brand); border-color: var(--brand); color: #fff; font-weight: 600; }
 
-  .hero { display: flex; gap: 10px; margin-top: 12px; }
+  /* Hero */
+  .hero { display: flex; gap: 10px; margin-bottom: 8px; }
   .hero .box { flex: 1; background: var(--surface-2); border-radius: 10px; padding: 10px 12px; }
   .hero .k { font-size: 10px; color: var(--text-2); text-transform: uppercase; letter-spacing: .4px; }
-  .hero .v { font-size: 22px; font-weight: 800; margin-top: 2px; }
+  .hero .v { font-size: 22px; font-weight: 800; margin-top: 2px; font-variant-numeric: tabular-nums; }
   .hero .v.cost { color: var(--brand-light); }
+  .cache-note { font-size: 11px; color: var(--text-2); margin-bottom: 8px; }
 
-  .cache-note { font-size: 11px; color: var(--text-2); margin-top: 8px; }
-  .sec-title { font-size: 11px; color: var(--text-2); margin: 15px 0 8px; text-transform: uppercase; letter-spacing: .4px; }
-  .agents { display: flex; flex-direction: column; gap: 9px; flex: 1; }
+  /* Section title */
+  .sec-title { font-size: 11px; color: var(--text-2); margin: 10px 0 8px; text-transform: uppercase; letter-spacing: .4px; }
+
+  /* Agent bars */
+  .agents { display: flex; flex-direction: column; gap: 9px; }
   .row { display: flex; align-items: center; gap: 8px; font-size: 12px; }
   .dot { width: 8px; height: 8px; border-radius: 50%; flex: 0 0 auto; }
   .name { width: 66px; flex: 0 0 auto; text-transform: capitalize; color: var(--text); }
   .bar { flex: 1; height: 8px; background: #2f2f34; border-radius: 4px; overflow: hidden; }
   .bar > span { display: block; height: 100%; border-radius: 4px; }
-  .num { width: 52px; text-align: right; color: var(--text-2); flex: 0 0 auto; }
+  .num { width: 52px; text-align: right; color: var(--text-2); flex: 0 0 auto; font-variant-numeric: tabular-nums; }
   .empty { color: var(--text-2); font-size: 12px; text-align: center; padding: 18px 0; }
 
-  .foot { display: flex; align-items: center; justify-content: space-between; margin-top: 12px;
-    padding-top: 12px; border-top: 1px solid var(--border); font-size: 11px; color: var(--text-2); }
+  /* Mini trend chart */
+  .mini-trend { width: 100%; height: 80px; }
+  .mini-trend svg { display: block; }
+
+  /* Cost breakdown */
+  .cost-row { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid var(--border); font-size: 12px; }
+  .cost-row:last-child { border-bottom: none; }
+  .cost-model { color: var(--text); }
+  .cost-val { color: var(--brand-light); font-variant-numeric: tabular-nums; }
+
+  /* Footer */
+  .foot { display: flex; align-items: center; justify-content: space-between; margin-top: 10px;
+    padding-top: 10px; border-top: 1px solid var(--border); font-size: 11px; color: var(--text-2); }
   .btn { border: none; border-radius: 9px; padding: 8px 12px; font-size: 12px; font-weight: 600;
     color: #fff; cursor: pointer; background: linear-gradient(135deg, var(--brand), #c2410c); }
   .btn:hover { opacity: .92; }
@@ -75,78 +113,159 @@
 </head>
 <body>
   <div class="card">
-    <div class="top">
-      <h1 id="title">今日用量</h1>
-      <div class="top-right">
+    <!-- Tab bar -->
+    <div class="tab-bar">
+      <div class="tab-icons">
+        <button class="tab-btn active" data-tab="overview" title="概览">
+          <svg viewBox="0 0 24 24" fill="none">
+            <rect x="3" y="3" width="7" height="7" rx="1.5" stroke="currentColor" stroke-width="2"/>
+            <rect x="14" y="3" width="7" height="7" rx="1.5" stroke="currentColor" stroke-width="2"/>
+            <rect x="3" y="14" width="7" height="7" rx="1.5" stroke="currentColor" stroke-width="2"/>
+            <rect x="14" y="14" width="7" height="7" rx="1.5" stroke="currentColor" stroke-width="2"/>
+          </svg>
+        </button>
+        <button class="tab-btn" data-tab="trend" title="趋势">
+          <svg viewBox="0 0 24 24" fill="none">
+            <path d="M3 17l6-6 4 4 8-8" stroke="currentColor" stroke-width="2"
+                  stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="M14 7h7v7" stroke="currentColor" stroke-width="2"
+                  stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </button>
+        <button class="tab-btn" data-tab="cost" title="花费">
+          <svg viewBox="0 0 24 24" fill="none">
+            <path d="M12 2v20M17 5H9.5a3.5 3.5 0 100 7h5a3.5 3.5 0 110 7H6"
+                  stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </button>
+        <button class="tab-btn" data-tab="settings" title="设置">
+          <svg viewBox="0 0 24 24" fill="none">
+            <circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="2"/>
+            <path d="M12 1v3M12 20v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M1 12h3M20 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"
+                  stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+          </svg>
+        </button>
+      </div>
+      <div class="tab-right">
         <span class="date" id="date"></span>
-        <button class="icon-btn" id="gear" title="设置">⚙</button>
-        <button class="icon-btn" id="close">✕</button>
+        <button class="icon-btn" id="close" title="关闭">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none">
+            <path d="M18 6L6 18M6 6l12 12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+          </svg>
+        </button>
       </div>
     </div>
 
-    <div class="settings" id="settings" hidden>
-      <div class="settings-label">悬浮球显示</div>
-      <div class="settings-opts" id="orbOpts">
-        <button data-metric="today">今日</button>
-        <button data-metric="week">本周</button>
-        <button data-metric="month">本月</button>
-        <button data-metric="all">全部</button>
+    <!-- Tab: Overview -->
+    <div class="tab-panel active" id="panel-overview">
+      <div class="periods" id="periods">
+        <button class="pbtn active" data-period="today">今日</button>
+        <button class="pbtn" data-period="week">本周</button>
+        <button class="pbtn" data-period="month">本月</button>
+        <button class="pbtn" data-period="all">全部</button>
       </div>
-      <div class="settings-hint">小球数字按此口径显示；颜色始终反映今日热度</div>
+      <div class="hero">
+        <div class="box"><div class="k">Token</div><div class="v" id="tokens">—</div></div>
+        <div class="box"><div class="k">花费 ≈</div><div class="v cost" id="cost">—</div></div>
+      </div>
+      <div class="cache-note" id="cacheNote"></div>
+      <div class="sec-title" id="agentsTitle">各 Agent</div>
+      <div class="agents" id="agents"></div>
+      <div class="foot">
+        <span id="totalLine">累计 —</span>
+        <button class="btn" id="openBtn">打开完整看板</button>
+      </div>
     </div>
 
-    <div class="periods" id="periods">
-      <button class="pbtn active" data-period="today">今日</button>
-      <button class="pbtn" data-period="week">本周</button>
-      <button class="pbtn" data-period="month">本月</button>
-      <button class="pbtn" data-period="all">全部</button>
+    <!-- Tab: Trend -->
+    <div class="tab-panel" id="panel-trend">
+      <div class="periods" id="trendRange">
+        <button class="pbtn active" data-days="7">7 天</button>
+        <button class="pbtn" data-days="14">14 天</button>
+        <button class="pbtn" data-days="30">30 天</button>
+      </div>
+      <div class="sec-title">用量趋势</div>
+      <div class="mini-trend" id="miniTrend"></div>
     </div>
 
-    <div class="hero">
-      <div class="box"><div class="k">Token</div><div class="v" id="tokens">—</div></div>
-      <div class="box"><div class="k">花费 ≈</div><div class="v cost" id="cost">—</div></div>
+    <!-- Tab: Cost -->
+    <div class="tab-panel" id="panel-cost">
+      <div class="periods" id="costPeriod">
+        <button class="pbtn active" data-period="today">今日</button>
+        <button class="pbtn" data-period="week">本周</button>
+        <button class="pbtn" data-period="month">本月</button>
+        <button class="pbtn" data-period="all">全部</button>
+      </div>
+      <div class="hero">
+        <div class="box"><div class="k">总花费 ≈</div><div class="v cost" id="costTotal">—</div></div>
+      </div>
+      <div class="sec-title">按模型花费</div>
+      <div id="costBreakdown"></div>
     </div>
-    <div class="cache-note" id="cacheNote"></div>
 
-    <div class="sec-title" id="agentsTitle">各 Agent</div>
-    <div class="agents" id="agents"></div>
-
-    <div class="foot">
-      <span id="totalLine">累计 —</span>
-      <button class="btn" id="openBtn">打开完整看板</button>
+    <!-- Tab: Settings -->
+    <div class="tab-panel" id="panel-settings">
+      <div class="settings">
+        <div class="settings-label">悬浮球显示</div>
+        <div class="settings-opts" id="orbOpts">
+          <button data-metric="today">今日</button>
+          <button data-metric="week">本周</button>
+          <button data-metric="month">本月</button>
+          <button data-metric="all">全部</button>
+        </div>
+        <div class="settings-hint">小球数字与颜色均按此口径显示</div>
+      </div>
+      <div class="foot">
+        <span id="versionInfo">v2.0</span>
+        <button class="btn" id="openBtn2">打开完整看板</button>
+      </div>
     </div>
   </div>
 
 <script>
   const AGENT_COLORS = { codex:'#f97316', claude:'#f472b6', 'kimi-code':'#38bdf8',
-    workbuddy:'#a78bfa', cursor:'#4ade80', unknown:'#a1a1aa' };
-  const LABELS = { today:'今日', week:'本周', month:'本月', all:'全部' };
+    'kimi-app':'#0ea5e9', workbuddy:'#a78bfa', cola:'#facc15',
+    cursor:'#4ade80', unknown:'#a1a1aa' };
+  const LABELS = { today:'\u4eca\u65e5', week:'\u672c\u5468', month:'\u672c\u6708', all:'\u5168\u90e8' };
   let PORT = 7373;
   let period = 'today';
+  let costPeriod = 'today';
+  let trendDays = 7;
 
   const fmt = n => !n ? '0' : n >= 1e9 ? (n/1e9).toFixed(1)+'B' : n >= 1e6 ? (n/1e6).toFixed(1)+'M' : n >= 1e3 ? (n/1e3).toFixed(1)+'K' : String(n);
-  const fmtCost = u => u == null ? '—' : u === 0 ? '$0' : u < 0.01 ? '<$0.01' : u < 100 ? '$'+u.toFixed(2) : '$'+Math.round(u).toLocaleString();
+  const fmtCost = u => u == null ? '\u2014' : u === 0 ? '$0' : u < 0.01 ? '<$0.01' : u < 100 ? '$'+u.toFixed(2) : '$'+Math.round(u).toLocaleString();
   const esc = s => String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 
-  async function render() {
+  // Tab switching
+  document.querySelectorAll('.tab-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const tab = btn.dataset.tab;
+      document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b === btn));
+      document.querySelectorAll('.tab-panel').forEach(p => p.classList.toggle('active', p.id === 'panel-' + tab));
+      if (tab === 'trend') renderTrend();
+      if (tab === 'cost') renderCost();
+    });
+  });
+
+  // --- Overview tab ---
+  async function renderOverview() {
     document.getElementById('date').textContent =
       new Date().toLocaleDateString('zh-CN', { month:'long', day:'numeric', weekday:'short' });
-    document.getElementById('title').textContent = LABELS[period] + '用量';
-    document.getElementById('agentsTitle').textContent = `各 Agent（${LABELS[period]}）`;
+    document.getElementById('agentsTitle').textContent = `\u5404 Agent\uFF08${LABELS[period]}\uFF09`;
 
     let data;
-    try { data = await (await fetch(`http://localhost:${PORT}/api/period-summary?period=${period}`)).json(); }
+    try { data = await (await fetch(`http://127.0.0.1:${PORT}/api/period-summary?period=${period}`)).json(); }
     catch { return; }
 
     document.getElementById('tokens').textContent = fmt(data.total_tokens);
     document.getElementById('cost').textContent = fmtCost(data.cost);
     document.getElementById('cacheNote').textContent =
-      data.cache_read ? `其中缓存读取 ${fmt(data.cache_read)}（含在总量内，按缓存价计入花费）` : '';
+      data.cache_read ? `\u5176\u4e2d\u7f13\u5b58\u8bfb\u53d6 ${fmt(data.cache_read)}\uFF08\u542b\u5728\u603b\u91cf\u5185\uFF09` : '';
 
     const box = document.getElementById('agents');
     box.innerHTML = '';
     const list = (data.byAgent || []).filter(a => a.total_tokens > 0);
-    if (!list.length) { box.innerHTML = `<div class="empty">${LABELS[period]}还没有用量</div>`; }
+    if (!list.length) { box.innerHTML = `<div class="empty">${LABELS[period]}\u8fd8\u6ca1\u6709\u7528\u91cf</div>`; }
     else {
       const max = Math.max(...list.map(t => t.total_tokens), 1);
       for (const t of list) {
@@ -163,29 +282,89 @@
     }
   }
 
-  async function loadFooter() {
+  // --- Trend tab ---
+  async function renderTrend() {
     try {
-      const all = await (await fetch(`http://localhost:${PORT}/api/period-summary?period=all`)).json();
-      document.getElementById('totalLine').textContent = `累计 ${fmt(all.total_tokens)} · ${fmtCost(all.cost)}`;
+      const daily = await (await fetch(`http://127.0.0.1:${PORT}/api/daily?agent=all`)).json();
+      const recent = daily.slice(0, trendDays).reverse();
+      const el = document.getElementById('miniTrend');
+      el.innerHTML = '';
+      if (!recent.length) { el.innerHTML = '<div class="empty">\u6682\u65e0\u6570\u636e</div>'; return; }
+
+      const maxVal = Math.max(1, ...recent.map(d => d.total_tokens));
+      const W = 280, H = 80, pad = 4;
+      const barW = Math.max(3, (W - pad * (recent.length + 1)) / recent.length);
+      let svg = `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">`;
+      recent.forEach((d, i) => {
+        const x = pad + i * (barW + pad);
+        const h = (d.total_tokens / maxVal) * (H - 20);
+        const y = H - h - 12;
+        svg += `<rect x="${x}" y="${y}" width="${barW}" height="${h}" rx="2" fill="#f97316" opacity="0.85"><title>${d.date}: ${fmt(d.total_tokens)}</title></rect>`;
+        svg += `<text x="${x + barW/2}" y="${H - 2}" text-anchor="middle" fill="#71717a" font-size="8">${d.date.slice(5)}</text>`;
+      });
+      svg += '</svg>';
+      el.innerHTML = svg;
     } catch {}
   }
 
-  document.querySelectorAll('.pbtn').forEach(b => b.addEventListener('click', () => {
-    period = b.dataset.period;
-    document.querySelectorAll('.pbtn').forEach(x => x.classList.toggle('active', x === b));
-    render();
-  }));
-  document.getElementById('openBtn').addEventListener('click', () => window.orbAPI?.openDashboard());
-  document.getElementById('close').addEventListener('click', () => window.orbAPI?.closePanel());
-  window.orbAPI?.onRefresh?.(() => render());
+  // --- Cost tab ---
+  async function renderCost() {
+    try {
+      const summary = await (await fetch(`http://127.0.0.1:${PORT}/api/period-summary?period=${costPeriod}`)).json();
+      document.getElementById('costTotal').textContent = fmtCost(summary.cost);
 
-  // --- settings (what the orb displays) ------------------------------------
-  const gear = document.getElementById('gear');
-  const settings = document.getElementById('settings');
-  gear.addEventListener('click', () => {
-    settings.hidden = !settings.hidden;
-    gear.classList.toggle('active', !settings.hidden);
-  });
+      // Per-model cost for this period
+      const models = await (await fetch(`http://127.0.0.1:${PORT}/api/models?agent=all`)).json();
+      models.sort((a, b) => (b.cost || 0) - (a.cost || 0));
+      const el = document.getElementById('costBreakdown');
+      el.innerHTML = '';
+      const top = models.filter(m => m.cost != null).slice(0, 8);
+      if (!top.length) {
+        el.innerHTML = '<div class="empty">\u6682\u65e0\u82b1\u8d39\u6570\u636e</div>';
+        return;
+      }
+      for (const m of top) {
+        const row = document.createElement('div');
+        row.className = 'cost-row';
+        row.innerHTML = `<span class="cost-model">${esc(m.model)}</span><span class="cost-val">${fmtCost(m.cost)}</span>`;
+        el.appendChild(row);
+      }
+    } catch {}
+  }
+
+  // --- Footer ---
+  async function loadFooter() {
+    try {
+      const all = await (await fetch(`http://127.0.0.1:${PORT}/api/period-summary?period=all`)).json();
+      document.getElementById('totalLine').textContent = `\u7d2f\u8ba1 ${fmt(all.total_tokens)} \u00b7 ${fmtCost(all.cost)}`;
+    } catch {}
+  }
+
+  // --- Period buttons ---
+  document.querySelectorAll('#periods .pbtn').forEach(b => b.addEventListener('click', () => {
+    period = b.dataset.period;
+    document.querySelectorAll('#periods .pbtn').forEach(x => x.classList.toggle('active', x === b));
+    renderOverview();
+  }));
+
+  document.querySelectorAll('#trendRange .pbtn').forEach(b => b.addEventListener('click', () => {
+    trendDays = parseInt(b.dataset.days, 10);
+    document.querySelectorAll('#trendRange .pbtn').forEach(x => x.classList.toggle('active', x === b));
+    renderTrend();
+  }));
+
+  document.querySelectorAll('#costPeriod .pbtn').forEach(b => b.addEventListener('click', () => {
+    costPeriod = b.dataset.period;
+    document.querySelectorAll('#costPeriod .pbtn').forEach(x => x.classList.toggle('active', x === b));
+    renderCost();
+  }));
+
+  document.getElementById('openBtn').addEventListener('click', () => window.orbAPI?.openDashboard());
+  document.getElementById('openBtn2').addEventListener('click', () => window.orbAPI?.openDashboard());
+  document.getElementById('close').addEventListener('click', () => window.orbAPI?.closePanel());
+  window.orbAPI?.onRefresh?.(() => { renderOverview(); loadFooter(); });
+
+  // --- Orb metric settings ---
   async function markOrbMetric() {
     let m = 'today';
     try { m = (await window.orbAPI?.orbMetric?.()) || 'today'; } catch {}
@@ -201,7 +380,7 @@
 
   (async () => {
     try { const p = await window.orbAPI?.port?.(); if (p) PORT = p; } catch {}
-    render(); loadFooter(); markOrbMetric();
+    renderOverview(); loadFooter(); markOrbMetric();
   })();
 </script>
 </body>

@@ -1,13 +1,14 @@
 {
   "name": "token-usage-dashboard",
+  "productName": "TokenDash",
   "version": "0.1.0",
   "description": "跨 Agent Token 用量统计桌面看板",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
     "dev": "NODE_ENV=development node server.js",
-    "electron": "electron .",
-    "widget": "electron desktop/main.js"
+    "electron": "env -u ELECTRON_RUN_AS_NODE electron .",
+    "widget": "env -u ELECTRON_RUN_AS_NODE electron desktop/main.js"
   },
   "keywords": [
     "token",

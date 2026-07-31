@@ -6,6 +6,7 @@ const pricing = require('./pricing');
 
 const DB_DIR = path.join(os.homedir(), '.token-usage-dashboard');
 const DB_PATH = path.join(DB_DIR, 'usage.db');
+const REBUILD_BACKUP_PATH = path.join(DB_DIR, 'usage.before-rebuild.db');
 
 let SQL;
 let db;
@@ -43,6 +44,7 @@ async function init() {
       cache_creation_tokens INTEGER DEFAULT 0,
       reasoning_tokens INTEGER DEFAULT 0,
       total_tokens INTEGER DEFAULT 0,
+      context_window INTEGER DEFAULT 0,
       source_file TEXT,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       UNIQUE(agent, session_id, timestamp, total_tokens)
@@ -52,6 +54,10 @@ async function init() {
     CREATE INDEX IF NOT EXISTS idx_timestamp ON usage_records(timestamp);
     CREATE INDEX IF NOT EXISTS idx_date ON usage_records(date(timestamp, 'localtime'));
   `);
+
+  // Add context_window column if upgrading from older schema (ALTER TABLE
+  // ADD COLUMN is idempotent-safe via try/catch).
+  try { db.exec('ALTER TABLE usage_records ADD COLUMN context_window INTEGER DEFAULT 0'); } catch { /* column exists */ }
 
   save();
 }
@@ -67,8 +73,8 @@ function insertUsageRecords(records) {
 
   const stmt = db.prepare(`
     INSERT OR IGNORE INTO usage_records
-    (agent, session_id, timestamp, model, input_tokens, output_tokens, cache_read_tokens, cache_creation_tokens, reasoning_tokens, total_tokens, source_file)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    (agent, session_id, timestamp, model, input_tokens, output_tokens, cache_read_tokens, cache_creation_tokens, reasoning_tokens, total_tokens, context_window, source_file)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
 
   let count = 0;
@@ -86,9 +92,10 @@ function insertUsageRecords(records) {
         row.cache_creation_tokens || 0,
         row.reasoning_tokens || 0,
         row.total_tokens || 0,
+        row.context_window || 0,
         row.source_file || null
       ]);
-      count++;
+      count += db.getRowsModified();
     }
   } finally {
     stmt.free();
@@ -96,6 +103,12 @@ function insertUsageRecords(records) {
 
   save();
   return count;
+}
+
+function createRebuildBackup() {
+  save();
+  fs.copyFileSync(DB_PATH, REBUILD_BACKUP_PATH);
+  return REBUILD_BACKUP_PATH;
 }
 
 function clearAll() {
@@ -251,17 +264,24 @@ function getPeriodSummary(period) {
   let cost = 0, priced = false;
   for (const r of am) { const c = pricing.costOf(r); if (c != null) { cost += c; priced = true; } }
 
-  // today's heat level relative to the busiest single day
+  // Heat level: how intense the *selected period* is, measured as its average
+  // daily tokens relative to the single busiest day. For 'today' this reduces
+  // to today-vs-busiest-day (the original behaviour); for week/month/all it
+  // normalises by the number of active days so the orb colour tracks the same
+  // metric the number shows.
   const maxDay = query(
     `SELECT COALESCE(MAX(dt), 0) m FROM
        (SELECT SUM(total_tokens) dt FROM usage_records GROUP BY date(timestamp, 'localtime'))`)[0].m;
-  const todayTotal = query(
-    `SELECT COALESCE(SUM(total_tokens), 0) t FROM usage_records
-     WHERE date(timestamp, 'localtime') = ?`, [localDateStr()])[0].t;
-  const ratio = maxDay > 0 ? todayTotal / maxDay : 0;
-  const heatLevel = todayTotal <= 0 ? 0 : ratio <= 0.2 ? 1 : ratio <= 0.4 ? 2 : ratio <= 0.7 ? 3 : 4;
+  let daysInPeriod = 1;
+  if (period === 'week' || period === 'month') {
+    daysInPeriod = Math.max(1, query(`SELECT COUNT(DISTINCT date(timestamp, 'localtime')) c FROM usage_records ${where}`, params)[0].c || 1);
+  } else if (period === 'all') {
+    daysInPeriod = Math.max(1, query(`SELECT COUNT(DISTINCT date(timestamp, 'localtime')) c FROM usage_records`)[0].c || 1);
+  }
+  const ratio = maxDay > 0 ? total / (maxDay * daysInPeriod) : 0;
+  const heatLevel = total <= 0 ? 0 : ratio <= 0.2 ? 1 : ratio <= 0.4 ? 2 : ratio <= 0.7 ? 3 : 4;
 
-  return { period, total_tokens: total, cache_read: cacheRead, cost: priced ? cost : null, byAgent, todayHeatLevel: heatLevel };
+  return { period, total_tokens: total, cache_read: cacheRead, cost: priced ? cost : null, byAgent, heatLevel };
 }
 
 function getDailyUsage(agent) {
@@ -446,10 +466,144 @@ function getRecords({ agent, date, limit = 100, offset = 0 }) {
   return rows;
 }
 
+// Hourly token distribution for a given date (and optionally agent).
+// Returns [{hour: "00", tokens: 0}, ..., {hour: "23", tokens: 123}].
+function getHourlyUsage(agent, date) {
+  const where = ["date(timestamp, 'localtime') = ?"];
+  const params = [date || localDateStr()];
+  if (agent && agent !== 'all') {
+    where.push('agent = ?');
+    params.push(agent);
+  }
+  const clause = where.join(' AND ');
+  return query(`
+    SELECT
+      strftime('%H', timestamp, 'localtime') as hour,
+      COALESCE(SUM(total_tokens), 0) as tokens
+    FROM usage_records
+    WHERE ${clause}
+    GROUP BY hour
+    ORDER BY hour ASC
+  `, params);
+}
+
+// Daily cost breakdown by model for the cost trend chart.
+// Returns [{date, cost, byModel: {modelName: cost, ...}}].
+function getDailyCost(agent, days) {
+  const scoped = agent && agent !== 'all';
+  const maxDays = Math.min(days || 30, 365);
+
+  // Get the earliest date to include.
+  const cutoffRow = query(`
+    SELECT DISTINCT date(timestamp, 'localtime') as d
+    FROM usage_records
+    ${scoped ? 'WHERE agent = ?' : ''}
+    ORDER BY d DESC
+    LIMIT ?
+  `, scoped ? [agent, maxDays] : [maxDays]);
+
+  if (!cutoffRow.length) return [];
+  const dates = cutoffRow.map(r => r.d);
+  const dateSet = new Set(dates);
+
+  // Fetch per-day per-model token totals.
+  const where = scoped ? 'WHERE agent = ?' : '';
+  const params = scoped ? [agent] : [];
+  const rawRows = query(`
+    SELECT
+      date(timestamp, 'localtime') as date,
+      COALESCE(NULLIF(model, ''), 'unknown') as model,
+      COALESCE(SUM(input_tokens), 0) as input_tokens,
+      COALESCE(SUM(output_tokens), 0) as output_tokens,
+      COALESCE(SUM(cache_read_tokens), 0) as cache_read_tokens,
+      COALESCE(SUM(cache_creation_tokens), 0) as cache_creation_tokens
+    FROM usage_records
+    ${where}
+    GROUP BY date(timestamp, 'localtime'), model
+    ORDER BY date(timestamp, 'localtime') ASC
+  `, params);
+
+  const result = [];
+  for (const r of rawRows) {
+    if (!dateSet.has(r.date)) continue;
+    const c = pricing.costOf(r);
+    if (c == null || c === 0) continue;
+    let entry = result.find(e => e.date === r.date);
+    if (!entry) {
+      entry = { date: r.date, cost: 0, byModel: {} };
+      result.push(entry);
+    }
+    entry.cost += c;
+    entry.byModel[r.model] = (entry.byModel[r.model] || 0) + c;
+  }
+  result.sort((a, b) => a.date.localeCompare(b.date));
+  return result;
+}
+
+// Daily cost breakdown by AGENT for the cost trend chart (agent dimension).
+// Returns [{date, cost, byAgent: {agentName: cost, ...}}].
+// Note: must GROUP BY model too so pricing.costOf can match the model name.
+function getDailyCostByAgent(days) {
+  const maxDays = Math.min(days || 30, 365);
+
+  const cutoffRow = query(`
+    SELECT DISTINCT date(timestamp, 'localtime') as d
+    FROM usage_records
+    ORDER BY d DESC
+    LIMIT ?
+  `, [maxDays]);
+
+  if (!cutoffRow.length) return [];
+  const dateSet = new Set(cutoffRow.map(r => r.d));
+
+  const rawRows = query(`
+    SELECT
+      date(timestamp, 'localtime') as date,
+      agent,
+      COALESCE(NULLIF(model, ''), 'unknown') as model,
+      COALESCE(SUM(input_tokens), 0) as input_tokens,
+      COALESCE(SUM(output_tokens), 0) as output_tokens,
+      COALESCE(SUM(cache_read_tokens), 0) as cache_read_tokens,
+      COALESCE(SUM(cache_creation_tokens), 0) as cache_creation_tokens
+    FROM usage_records
+    GROUP BY date(timestamp, 'localtime'), agent, model
+    ORDER BY date(timestamp, 'localtime') ASC
+  `);
+
+  const result = [];
+  for (const r of rawRows) {
+    if (!dateSet.has(r.date)) continue;
+    const c = pricing.costOf(r);
+    if (c == null || c === 0) continue;
+    let entry = result.find(e => e.date === r.date);
+    if (!entry) {
+      entry = { date: r.date, cost: 0, byAgent: {} };
+      result.push(entry);
+    }
+    entry.cost += c;
+    entry.byAgent[r.agent] = (entry.byAgent[r.agent] || 0) + c;
+  }
+  result.sort((a, b) => a.date.localeCompare(b.date));
+  return result;
+}
+
+// Database statistics: record count, file size, time span.
+function getDbStats() {
+  const size = fs.existsSync(DB_PATH) ? fs.statSync(DB_PATH).size : 0;
+  const r = query(`SELECT COUNT(*) as c, MIN(timestamp) as mn, MAX(timestamp) as mx FROM usage_records`)[0];
+  return {
+    records: r.c || 0,
+    dbSizeBytes: size,
+    earliest: r.mn,
+    latest: r.mx
+  };
+}
+
 module.exports = {
   init,
   insertUsageRecords,
   importFromBuffer,
+  createRebuildBackup,
   clearAll,
   getSummary,
   getPeriodSummary,
@@ -458,5 +612,9 @@ module.exports = {
   getDailyByModel,
   getAgents,
   getModelUsage,
-  getRecords
+  getRecords,
+  getHourlyUsage,
+  getDailyCost,
+  getDailyCostByAgent,
+  getDbStats
 };
