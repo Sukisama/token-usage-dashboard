@@ -1157,9 +1157,9 @@ body {
 
 /* Overview-page compact platform quota list */
 .sub-quota-list {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 12px;
 }
 .sub-quota-row {
   background: var(--surface);
@@ -1182,10 +1182,11 @@ body {
   font-size: 11px;
   margin-left: auto;
 }
+/* Bars are stacked vertically inside each card (5h on top, weekly below). */
 .sub-quota-bars {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 .sub-quota-pair-head {
   display: flex;
@@ -1206,6 +1207,7 @@ body {
   margin-left: 6px;
 }
 .sub-quota-empty {
+  grid-column: 1 / -1;
   display: flex;
   align-items: center;
   justify-content: center;
