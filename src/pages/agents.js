@@ -584,7 +584,7 @@
         _offset = 0;
         _allRecords = [];
       }
-      const records = await API.getRecords({ agent: agentName, limit: PAGE, offset: _offset });
+      const { records } = await API.getRecords({ agent: agentName, limit: PAGE, offset: _offset });
       _allRecords = _allRecords.concat(records);
       _offset += records.length;
       applyRecordFilter();
@@ -693,7 +693,7 @@
 
     // Hourly distribution (aggregate from records)
     try {
-      const records = await API.getRecords({ agent: agentName, limit: 500, offset: 0 });
+      const { records } = await API.getRecords({ agent: agentName, limit: 500, offset: 0 });
       const hourBuckets = new Array(24).fill(0);
       for (const r of records) {
         const hour = parseInt(String(r.timestamp).substring(11, 13), 10);

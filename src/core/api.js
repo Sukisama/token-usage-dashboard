@@ -56,6 +56,9 @@
       return _get(`/api/records?${params}`);
     },
 
+    // Day agent summary (per-agent per-model token totals for a date)
+    getDaySummary: (date) => _get(`/api/day-summary?date=${encodeURIComponent(date)}`),
+
     // Hourly
     getHourly: (agent, date) => {
       let q = `/api/hourly`;

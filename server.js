@@ -187,6 +187,10 @@ async function handleApi(req, res) {
       const limit = parseInt(url.searchParams.get('limit') || '50', 10);
       const offset = parseInt(url.searchParams.get('offset') || '0', 10);
       sendJson(res, db.getRecords({ agent, date, limit, offset }));
+    } else if (req.url.startsWith('/api/day-summary')) {
+      const url = new URL(req.url, `http://localhost:${PORT}`);
+      const date = url.searchParams.get('date') || null;
+      sendJson(res, db.getDayAgentSummary(date));
     } else if (req.url.startsWith('/api/models')) {
       const url = new URL(req.url, `http://localhost:${PORT}`);
       const agent = url.searchParams.get('agent') || 'all';

@@ -933,6 +933,42 @@ body {
 .drill-agent-pct { color: var(--text-secondary); font-size: 11px; min-width: 40px; text-align: right; }
 .drill-chart svg { max-width: 100%; }
 
+/* ============ Pagination ============ */
+.pagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+.page-btn {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--text-primary);
+  font-size: 12px;
+  padding: 5px 12px;
+  border-radius: 5px;
+  cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+.page-btn:hover:not(:disabled) {
+  background: rgba(249,115,22,0.1);
+  border-color: var(--brand);
+  color: var(--brand);
+}
+.page-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+.page-info {
+  font-size: 12px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
 /* Agent dot inline */
 .agent-dot.inline {
   display: inline-block;

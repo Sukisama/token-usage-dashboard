@@ -441,6 +441,17 @@ function getRecords({ agent, date, limit = 100, offset = 0 }) {
     params.push(date);
   }
   const clause = where.length ? `WHERE ${where.join(' AND ')}` : '';
+
+  // Count total matching groups (same GROUP BY as the query)
+  const countSql = `
+    SELECT COUNT(*) as total FROM (
+      SELECT 1 FROM usage_records
+      ${clause}
+      GROUP BY agent, session_id, model, strftime('%Y-%m-%d %H', timestamp, 'localtime')
+    )
+  `;
+  const total = query(countSql, params)[0].total;
+
   const sql = `
     SELECT
       agent,
@@ -462,6 +473,29 @@ function getRecords({ agent, date, limit = 100, offset = 0 }) {
   params.push(limit, offset);
 
   const rows = query(sql, params);
+  for (const r of rows) r.cost = pricing.costOf(r);
+  return { records: rows, total };
+}
+
+// Day-level agent summary: per-agent per-model token totals for a given date.
+// Grouped by agent+model so the frontend can compute cost via pricing.costOf.
+function getDayAgentSummary(date) {
+  const targetDate = date || localDateStr();
+  const rows = query(`
+    SELECT
+      agent,
+      COALESCE(NULLIF(model, ''), 'unknown') as model,
+      SUM(input_tokens) as input_tokens,
+      SUM(output_tokens) as output_tokens,
+      SUM(cache_read_tokens) as cache_read_tokens,
+      SUM(cache_creation_tokens) as cache_creation_tokens,
+      SUM(total_tokens) as total_tokens,
+      COUNT(*) as records
+    FROM usage_records
+    WHERE date(timestamp, 'localtime') = ?
+    GROUP BY agent, model
+    ORDER BY agent, total_tokens DESC
+  `, [targetDate]);
   for (const r of rows) r.cost = pricing.costOf(r);
   return rows;
 }
@@ -613,6 +647,7 @@ module.exports = {
   getAgents,
   getModelUsage,
   getRecords,
+  getDayAgentSummary,
   getHourlyUsage,
   getDailyCost,
   getDailyCostByAgent,
