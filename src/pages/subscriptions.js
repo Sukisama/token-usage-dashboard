@@ -17,11 +17,11 @@
   let _editing = null;       // currently-edited row (or null for new)
 
   const PLATFORMS = [
-    { id: 'anthropic',         label: 'Anthropic Claude',  color: '#d97757', domains: ['claude.ai'] },
-    { id: 'openai-codex',      label: 'OpenAI Codex',      color: '#10a37f', domains: ['chatgpt.com', 'openai.com'] },
-    { id: 'kimi',              label: 'Kimi (月之暗面)',     color: '#1f6feb', domains: ['kimi.moonshot.cn', 'moonshot.cn'] },
-    { id: 'google-antigravity',label: 'Google Antigravity',color: '#4285f4', domains: ['aistudio.google.com'] },
-    { id: 'minimax',           label: 'MiniMax',           color: '#f59e0b', domains: ['minimaxi.com', 'minimax.cn'] }
+    { id: 'anthropic',         label: 'Anthropic Claude',  color: '#d97757', domains: ['claude.ai'],           loginType: 'cli' },
+    { id: 'openai-codex',      label: 'OpenAI Codex',      color: '#10a37f', domains: ['chatgpt.com'],          loginType: 'cli' },
+    { id: 'kimi',              label: 'Kimi (月之暗面)',     color: '#1f6feb', domains: ['kimi.moonshot.cn'],     loginType: 'cli' },
+    { id: 'google-antigravity',label: 'Google Antigravity',color: '#4285f4', domains: ['aistudio.google.com'],  loginType: 'cli' },
+    { id: 'minimax',           label: 'MiniMax',           color: '#f59e0b', domains: ['minimaxi.com'],         loginType: 'web' }
   ];
 
   const PLATFORM_MAP = PLATFORMS.reduce((m, p) => { m[p.id] = p; return m; }, {});
@@ -166,6 +166,7 @@
         if (action === 'edit') openEditModal(_subscriptions.find(x => x.id === id));
         else if (action === 'delete') deleteSub(id);
         else if (action === 'refresh') refreshOne(id);
+        else if (action === 'login') loginPlatform(id);
         else if (action === 'paste-cookie') pasteCookiePrompt(id);
       });
     });
@@ -209,9 +210,24 @@
         ${s.last_check_status && s.last_check_status !== 'ok' && s.last_check_message ? `
           <div class="sub-warning">${F.esc(s.last_check_message)}</div>
         ` : ''}
+
+        ${renderLoginButton(s)}
       </div>
     `;
     return html;
+  }
+
+  function renderLoginButton(s) {
+    const p = PLATFORM_MAP[s.platform];
+    if (!p) return '';
+    const st = s.last_check_status || '';
+    // Show the login/verify button when auth failed or the platform is manual-only.
+    const needsLogin = st === 'auth_expired' || st === 'error' || st === 'unavailable' || st === '' || st === 'pending';
+    if (!needsLogin) return '';
+    if (p.loginType === 'cli') {
+      return `<button class="btn-secondary sub-login-btn" data-action="login" data-id="${s.id}">🔑 验证登录</button>`;
+    }
+    return `<button class="btn-secondary sub-login-btn" data-action="login" data-id="${s.id}">🌐 去官网</button>`;
   }
 
   function renderLimitBar(label, used, total, percent, reset) {
@@ -458,6 +474,27 @@
       await refresh();
     } catch (err) {
       window.setStatus && window.setStatus('刷新失败: ' + err.message, 'error');
+    }
+  }
+
+  async function loginPlatform(id) {
+    const sub = _subscriptions.find(s => s.id === id);
+    if (!sub) return;
+    const p = PLATFORM_MAP[sub.platform];
+    window.setStatus && window.setStatus(`正在打开 ${platformLabel(sub.platform)} 登录...`);
+    try {
+      const r = await API.loginSubscription(sub.platform);
+      if (r.ok) {
+        if (r.method === 'terminal') {
+          window.setStatus && window.setStatus('已打开终端登录窗口，完成登录后点 ⟳ 刷新', 'success');
+        } else {
+          window.setStatus && window.setStatus('已打开浏览器，登录完成后点 ⟳ 刷新', 'success');
+        }
+      } else {
+        window.setStatus && window.setStatus('打开登录失败: ' + (r.error || '未知错误'), 'error');
+      }
+    } catch (err) {
+      window.setStatus && window.setStatus('登录请求失败: ' + err.message, 'error');
     }
   }
 

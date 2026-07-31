@@ -1279,6 +1279,13 @@ body {
   color: var(--text-secondary);
 }
 
+.sub-login-btn {
+  margin-top: 10px;
+  width: 100%;
+  font-size: 12px;
+  padding: 6px 10px;
+}
+
 /* form-row for modals */
 .form-row {
   display: flex;

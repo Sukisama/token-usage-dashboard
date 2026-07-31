@@ -129,6 +129,58 @@ async function refreshAllSubscriptions(platformFilter = null) {
   return { success, failed, skipped, total: subs.length };
 }
 
+// Per-platform "verify login" launcher. For platforms whose local token comes
+// from a CLI (opencodex / codex), we write a .command file and `open` it —
+// macOS launches Terminal on the file (no AppleScript automation permission
+// needed), the device-code OAuth flow prints a URL/code, opens the browser,
+// and writes the refreshed token back to the same file our collector reads.
+// For platforms with no CLI (MiniMax), we just open the website.
+const NPM_BIN = path.join(os.homedir(), '.npm-global', 'bin');
+const LOGIN_COMMANDS = {
+  'anthropic': () => `"${path.join(NPM_BIN, 'ocx')}" login anthropic`,
+  'kimi': () => `"${path.join(NPM_BIN, 'ocx')}" login kimi`,
+  'google-antigravity': () => `"${path.join(NPM_BIN, 'ocx')}" login google-antigravity`,
+  'openai-codex': () => `"${path.join(NPM_BIN, 'codex')}" login`,
+};
+const LOGIN_URLS = {
+  'minimax': 'https://platform.minimaxi.com',
+  'anthropic': 'https://claude.ai/login',
+  'kimi': 'https://kimi.moonshot.cn',
+};
+
+function launchLogin(platform) {
+  const cmd = LOGIN_COMMANDS[platform] && LOGIN_COMMANDS[platform]();
+  if (cmd) {
+    // A .command file opened via `open` runs in a fresh Terminal window without
+    // needing AppleScript automation permission. Keep the window open afterward
+    // so the user can read the result / device code.
+    const tmp = path.join(os.tmpdir(), `tud-login-${platform}-${Date.now()}.command`);
+    const script = `#!/bin/bash\nclear\necho "=== ${platform} 登录 ==="\necho "完成登录后回到用量看板点 ⟳ 刷新"\necho\ncd ~\n${cmd}\necho\necho "（此窗口可关闭）"\n`;
+    try {
+      fs.writeFileSync(tmp, script);
+      fs.chmodSync(tmp, 0o755);
+    } catch (e) {
+      return Promise.resolve({ ok: false, method: 'terminal', error: '无法创建登录脚本: ' + e.message });
+    }
+    return new Promise((resolve) => {
+      exec(`open "${tmp}"`, (err) => {
+        if (err) resolve({ ok: false, method: 'terminal', error: err.message });
+        else resolve({ ok: true, method: 'terminal', command: cmd });
+      });
+    });
+  }
+  const url = LOGIN_URLS[platform];
+  if (url) {
+    return new Promise((resolve) => {
+      exec(`open "${url}"`, (err) => {
+        if (err) resolve({ ok: false, method: 'browser', error: err.message });
+        else resolve({ ok: true, method: 'browser', url });
+      });
+    });
+  }
+  return Promise.resolve({ ok: false, error: '该平台暂不支持自动登录' });
+}
+
 function serveStatic(req, res) {
   const urlPath = decodeURIComponent((req.url === '/' ? '/index.html' : req.url).split('?')[0]);
   let filePath = path.normalize(path.join(SRC_DIR, urlPath));
@@ -284,6 +336,10 @@ async function handleApi(req, res) {
       const body = await parseBody(req) || {};
       const result = await refreshAllSubscriptions(body.platform || null);
       sendJson(res, { ok: true, ...result });
+    } else if (req.url === '/api/subscriptions/login' && req.method === 'POST') {
+      const body = await parseBody(req) || {};
+      const result = await launchLogin(body.platform);
+      sendJson(res, result);
     } else if (req.url.startsWith('/api/subscriptions/') && req.method === 'DELETE') {
       const id = parseInt(req.url.split('/').pop(), 10);
       db.deleteSubscription(id);

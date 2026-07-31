@@ -84,6 +84,7 @@
       return fetch(`/api/subscriptions/${id}`, { method: 'DELETE' }).then(r => r.json());
     },
     refreshSubscriptions: (platform) => _post('/api/subscriptions/refresh', { platform }),
+    loginSubscription: (platform) => _post('/api/subscriptions/login', { platform }),
 
     // Export / import
     exportDb: async () => {
