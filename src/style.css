@@ -1320,7 +1320,7 @@ body {
 .sub-limit {
   display: flex;
   flex-direction: column;
-  gap: 5px;
+  gap: 6px;
 }
 .sub-limit-header {
   display: flex;
@@ -1334,6 +1334,16 @@ body {
 .sub-limit-val strong {
   color: var(--text-primary);
   font-size: 13px;
+}
+.sub-limit .rank-bar {
+  width: 100%;
+  min-width: 0;
+  height: 10px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.04);
+}
+.sub-limit .rank-bar-fill {
+  transition: width 0.3s ease;
 }
 .sub-warning {
   margin-top: 12px;
