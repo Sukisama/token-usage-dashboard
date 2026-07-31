@@ -53,6 +53,40 @@ async function init() {
     CREATE INDEX IF NOT EXISTS idx_agent ON usage_records(agent);
     CREATE INDEX IF NOT EXISTS idx_timestamp ON usage_records(timestamp);
     CREATE INDEX IF NOT EXISTS idx_date ON usage_records(date(timestamp, 'localtime'));
+
+    -- Subscription plans (Anthropic Max, OpenAI Codex Pro, Kimi 月卡, etc.)
+    -- Stores plan metadata + rate-limit snapshots fetched by collectors.
+    CREATE TABLE IF NOT EXISTS subscriptions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      platform TEXT NOT NULL,           -- 'anthropic', 'openai-codex', 'kimi', 'google-antigravity', 'minimax'
+      account_label TEXT,               -- user-chosen: 'Work', 'Personal', etc.
+      plan_name TEXT,                   -- 'Max 5x', 'Pro', '月卡', etc.
+      monthly_cost REAL DEFAULT 0,      -- USD (or CNY converted), user can fill
+      currency TEXT DEFAULT 'USD',      -- USD / CNY
+      cycle TEXT DEFAULT 'monthly',     -- monthly / yearly
+      cycle_start TEXT,                 -- YYYY-MM-DD, when the current cycle started
+      cycle_end TEXT,                   -- YYYY-MM-DD, when it renews
+
+      -- 5-hour rolling window
+      limit5h_used REAL DEFAULT 0,
+      limit5h_total REAL DEFAULT 0,
+      limit5h_reset TEXT,               -- ISO datetime when this window resets
+      -- weekly window
+      limit_week_used REAL DEFAULT 0,
+      limit_week_total REAL DEFAULT 0,
+      limit_week_reset TEXT,            -- ISO datetime when weekly window resets
+
+      -- Source tracking
+      source TEXT DEFAULT 'manual',     -- 'auto:anthropic', 'auto:kimi', 'manual', 'unavailable'
+      last_check_at DATETIME,
+      last_check_status TEXT,           -- 'ok', 'auth_expired', 'rate_limited', 'error'
+      last_check_message TEXT,          -- human-readable error / status
+      enabled INTEGER DEFAULT 1,        -- 0 = paused, 1 = active
+
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(platform, account_label)
+    );
   `);
 
   // Add context_window column if upgrading from older schema (ALTER TABLE
@@ -633,6 +667,78 @@ function getDbStats() {
   };
 }
 
+// ---- Subscriptions (rate-limit dashboards from third-party platforms) ----
+
+// List all subscription entries (active and paused).
+function listSubscriptions() {
+  return query(`
+    SELECT * FROM subscriptions
+    WHERE enabled = 1
+    ORDER BY platform, account_label
+  `);
+}
+
+// Get a single subscription by id.
+function getSubscription(id) {
+  return query(`SELECT * FROM subscriptions WHERE id = ?`, [id])[0] || null;
+}
+
+// Upsert a subscription. Returns the row id.
+// Fields not provided keep their existing value (use provided fields verbatim).
+function upsertSubscription(fields) {
+  const now = new Date().toISOString();
+  const existing = fields.id ? getSubscription(fields.id) : null;
+  if (existing) {
+    const updates = [];
+    const params = [];
+    for (const k of Object.keys(fields)) {
+      if (k === 'id') continue;
+      updates.push(`${k} = ?`);
+      params.push(fields[k]);
+    }
+    updates.push('updated_at = ?');
+    params.push(now);
+    params.push(fields.id);
+    db.run(`UPDATE subscriptions SET ${updates.join(', ')} WHERE id = ?`, params);
+    save();
+    return fields.id;
+  } else {
+    const cols = Object.keys(fields);
+    const placeholders = cols.map(() => '?').join(', ');
+    const values = cols.map(k => fields[k]);
+    const result = db.run(
+      `INSERT INTO subscriptions (${cols.join(', ')}, created_at, updated_at) VALUES (${placeholders}, ?, ?)`,
+      [...values, now, now]
+    );
+    save();
+    return result.lastInsertRowid || result.insertId || Date.now();
+  }
+}
+
+// Update only the rate-limit snapshot for a subscription (called by collectors).
+function updateSubscriptionLimits(id, limits, status = 'ok', message = '') {
+  const now = new Date().toISOString();
+  db.run(`
+    UPDATE subscriptions
+    SET limit5h_used = ?, limit5h_total = ?, limit5h_reset = ?,
+        limit_week_used = ?, limit_week_total = ?, limit_week_reset = ?,
+        last_check_at = ?, last_check_status = ?, last_check_message = ?,
+        updated_at = ?
+    WHERE id = ?
+  `, [
+    limits.limit5h_used ?? 0, limits.limit5h_total ?? 0, limits.limit5h_reset ?? null,
+    limits.limit_week_used ?? 0, limits.limit_week_total ?? 0, limits.limit_week_reset ?? null,
+    now, status, message, now,
+    id
+  ]);
+  save();
+}
+
+function deleteSubscription(id) {
+  db.run(`DELETE FROM subscriptions WHERE id = ?`, [id]);
+  save();
+}
+
 module.exports = {
   init,
   insertUsageRecords,
@@ -651,5 +757,10 @@ module.exports = {
   getHourlyUsage,
   getDailyCost,
   getDailyCostByAgent,
-  getDbStats
+  getDbStats,
+  listSubscriptions,
+  getSubscription,
+  upsertSubscription,
+  updateSubscriptionLimits,
+  deleteSubscription
 };

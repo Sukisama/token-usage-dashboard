@@ -8,6 +8,7 @@ const pricing = require('./src/pricing');
 const collectors = require('./src/collectors');
 const { dirs: collectorDirs } = require('./src/collectors/paths');
 const { flushCache, resetCache } = require('./src/collectors/utils');
+const { refreshSubscription } = require('./src/collectors/subscriptions');
 
 const PORT = 7373;
 const SRC_DIR = path.join(__dirname, 'src');
@@ -88,6 +89,61 @@ function setupWatchers() {
       fs.watch(dir, { recursive: true, persistent: false }, () => scheduleAutoScan());
     } catch { /* recursive watch unsupported here; skip */ }
   }
+}
+
+// Refresh all enabled subscription rate limits. Iterates each row, calls the
+// platform's collector, and writes the snapshot back to the DB.
+async function refreshAllSubscriptions(platformFilter = null) {
+  const subs = db.listSubscriptions().filter(s =>
+    !platformFilter || s.platform === platformFilter
+  );
+  let success = 0, failed = 0, skipped = 0;
+  for (const sub of subs) {
+    const result = await refreshSubscription(sub);
+    if (result.status === 'unavailable') {
+      // Not a failure — just means we don't have a collector yet.
+      db.updateSubscriptionLimits(sub.id, {
+        limit5h_used: sub.limit5h_used,
+        limit5h_total: sub.limit5h_total,
+        limit5h_reset: sub.limit5h_reset,
+        limit_week_used: sub.limit_week_used,
+        limit_week_total: sub.limit_week_total,
+        limit_week_reset: sub.limit_week_reset
+      }, 'unavailable', result.message || '暂未实现自动采集');
+      skipped++;
+    } else if (result.status === 'ok') {
+      db.updateSubscriptionLimits(sub.id, {
+        limit5h_used: result.limit5h_used ?? sub.limit5h_used,
+        limit5h_total: result.limit5h_total ?? sub.limit5h_total,
+        limit5h_reset: result.limit5h_reset ?? sub.limit5h_reset,
+        limit_week_used: result.limit_week_used ?? sub.limit_week_used,
+        limit_week_total: result.limit_week_total ?? sub.limit_week_total,
+        limit_week_reset: result.limit_week_reset ?? sub.limit_week_reset
+      }, 'ok', '');
+      // Update plan info if the collector returned fresher data.
+      const updates = {};
+      if (result.plan_name) updates.plan_name = result.plan_name;
+      if (result.monthly_cost) updates.monthly_cost = result.monthly_cost;
+      if (result.cycle_start) updates.cycle_start = result.cycle_start;
+      if (result.cycle_end) updates.cycle_end = result.cycle_end;
+      if (Object.keys(updates).length) {
+        updates.id = sub.id;
+        db.upsertSubscription(updates);
+      }
+      success++;
+    } else {
+      db.updateSubscriptionLimits(sub.id, {
+        limit5h_used: sub.limit5h_used,
+        limit5h_total: sub.limit5h_total,
+        limit5h_reset: sub.limit5h_reset,
+        limit_week_used: sub.limit_week_used,
+        limit_week_total: sub.limit_week_total,
+        limit_week_reset: sub.limit_week_reset
+      }, result.status, result.message || '');
+      failed++;
+    }
+  }
+  return { success, failed, skipped, total: subs.length };
 }
 
 function serveStatic(req, res) {
@@ -235,6 +291,20 @@ async function handleApi(req, res) {
       sendJson(res, { ok: true, count: body.prices.length });
     } else if (req.url === '/api/stats') {
       sendJson(res, db.getDbStats());
+    } else if (req.url === '/api/subscriptions' && req.method === 'GET') {
+      sendJson(res, db.listSubscriptions());
+    } else if (req.url === '/api/subscriptions' && req.method === 'POST') {
+      const body = await parseBody(req);
+      const id = db.upsertSubscription(body);
+      sendJson(res, { ok: true, id });
+    } else if (req.url === '/api/subscriptions/refresh' && req.method === 'POST') {
+      const body = await parseBody(req) || {};
+      const result = await refreshAllSubscriptions(body.platform || null);
+      sendJson(res, { ok: true, ...result });
+    } else if (req.url.startsWith('/api/subscriptions/') && req.method === 'DELETE') {
+      const id = parseInt(req.url.split('/').pop(), 10);
+      db.deleteSubscription(id);
+      sendJson(res, { ok: true });
     } else {
       sendJson(res, { error: 'Not found' }, 404);
     }

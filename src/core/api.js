@@ -76,6 +76,15 @@
     getPricing: () => _get('/api/pricing'),
     updatePricing: (prices) => _put('/api/pricing', { prices }),
 
+    // Subscriptions
+    getSubscriptions: () => _get('/api/subscriptions'),
+    upsertSubscription: (fields) => _post('/api/subscriptions', fields),
+    deleteSubscription: (id) => {
+      // _post only handles JSON bodies; DELETE needs a custom fetch
+      return fetch(`/api/subscriptions/${id}`, { method: 'DELETE' }).then(r => r.json());
+    },
+    refreshSubscriptions: (platform) => _post('/api/subscriptions/refresh', { platform }),
+
     // Export / import
     exportDb: async () => {
       const res = await fetch('/api/export');
