@@ -19,7 +19,8 @@
   "author": "Doris",
   "license": "MIT",
   "dependencies": {
-    "sql.js": "^1.10.3"
+    "sql.js": "^1.10.3",
+    "undici": "^8.9.0"
   },
   "devDependencies": {
     "electron": "^40.10.3"
